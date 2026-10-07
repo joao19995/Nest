@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { exampleAnnualPlan, exampleConfiguration, exampleMonth } from "../data/example-month";
 import { calculateMonthlyPlan, suggestGoalAllocations } from "./calculate-monthly-plan";
+import { entitySeedIds } from "../../../shared/lib/entity-seed-ids";
 
 describe("calculateMonthlyPlan", () => {
   it("uses the income period applicable to the selected month", () => {
     const result = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, { ...exampleMonth, month: "2026-01" });
 
     expect(result.incomeByPerson).toEqual([
-      { personId: "joao", amount: 2500 },
-      { personId: "natch", amount: 2000 },
+      { personId: entitySeedIds.people.joao, amount: 2500 },
+      { personId: entitySeedIds.people.natch, amount: 2000 },
     ]);
     expect(result.dailySpending).toBe(1125);
     expect(result.surplus).toBe(2375);
@@ -33,16 +34,16 @@ describe("calculateMonthlyPlan", () => {
   it("calculates transfers from the minimum and joint actual expenses", () => {
     const result = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, exampleMonth);
     expect(result.transfers).toEqual([
-      { personId: "joao", minimumAmount: 1000, amount: 1000, accountId: "joint", status: "calculated" },
-      { personId: "natch", minimumAmount: 800, amount: 800, accountId: "joint", status: "calculated" },
+      { personId: entitySeedIds.people.joao, minimumAmount: 1000, amount: 1000, accountId: entitySeedIds.accounts.joint, status: "calculated" },
+      { personId: entitySeedIds.people.natch, minimumAmount: 800, amount: 800, accountId: entitySeedIds.accounts.joint, status: "calculated" },
     ]);
 
-    const highJointExpenses = { ...exampleMonth, expenses: [{ categoryId: "house", accountId: "joint", planned: 1300, actual: 1300 }] };
+    const highJointExpenses = { ...exampleMonth, expenses: [{ categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, planned: 1300, actual: 1300 }] };
     expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, highJointExpenses).totalJointExpenses).toBe(1300);
     expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, highJointExpenses).totalTransferRequirement).toBe(1800);
     expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, highJointExpenses).transfers.every((transfer) => transfer.status === "calculated")).toBe(true);
 
-    const expensesAboveMinimum = { ...exampleMonth, expenses: [{ categoryId: "house", accountId: "joint", planned: 2000, actual: 2000 }] };
+    const expensesAboveMinimum = { ...exampleMonth, expenses: [{ categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, planned: 2000, actual: 2000 }] };
     expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, expensesAboveMinimum).totalTransferRequirement).toBe(2000);
     const proportionalTransfers = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, expensesAboveMinimum).transfers;
     expect(proportionalTransfers.every((transfer) => transfer.status === "calculated")).toBe(true);

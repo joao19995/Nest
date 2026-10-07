@@ -34,13 +34,14 @@ export type MonthlyContributionRule = {
 export type Account = {
   id: string;
   name: string;
+  ownerPersonId: string | null;
 };
 
 export type Category = {
   id: string;
   name: string;
-  type: "global" | "normal";
-  accountId: string;
+  type: "FIXED" | "VARIABLE";
+  active: boolean;
 };
 
 export type CategoryTemplate = {

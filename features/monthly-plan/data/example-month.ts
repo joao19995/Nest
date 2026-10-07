@@ -1,32 +1,38 @@
 import type { FinancialConfiguration, MonthlyPlan } from "../domain/types";
+import { entitySeedIds } from "../../../shared/lib/entity-seed-ids";
 
 export const exampleConfiguration: FinancialConfiguration = {
   people: [
-    { id: "joao", name: "João" },
-    { id: "natch", name: "Natch" },
+    { id: entitySeedIds.people.joao, name: "João" },
+    { id: entitySeedIds.people.natch, name: "Natch" },
   ],
   incomes: [
-    { personId: "joao", periods: [{ amount: 2500, validFrom: "2026-01" }, { amount: 2680, validFrom: "2026-05" }], bonusMonths: [6, 12] },
-    { personId: "natch", periods: [{ amount: 2000, validFrom: "2026-01" }], bonusMonths: [6, 12] },
+    { personId: entitySeedIds.people.joao, periods: [{ amount: 2500, validFrom: "2026-01" }, { amount: 2680, validFrom: "2026-05" }], bonusMonths: [6, 12] },
+    { personId: entitySeedIds.people.natch, periods: [{ amount: 2000, validFrom: "2026-01" }], bonusMonths: [6, 12] },
   ],
   dailySpendingPercentage: 25,
   emergencyFundMonths: 6,
   contributionRules: [
-    { personId: "joao", minimumAmount: 1000 },
-    { personId: "natch", minimumAmount: 800 },
+    { personId: entitySeedIds.people.joao, minimumAmount: 1000 },
+    { personId: entitySeedIds.people.natch, minimumAmount: 800 },
   ],
   accounts: [
-    { id: "joao", name: "João" },
-    { id: "natch", name: "Natch" },
-    { id: "joint", name: "Conjunta" },
+    { id: entitySeedIds.accounts.joao, name: "João", ownerPersonId: entitySeedIds.people.joao },
+    { id: entitySeedIds.accounts.natch, name: "Natch", ownerPersonId: entitySeedIds.people.natch },
+    { id: entitySeedIds.accounts.joint, name: "Conjunta", ownerPersonId: null },
   ],
   categories: [
-    { id: "house", name: "Casa", type: "global", accountId: "joint" },
-    { id: "car", name: "Carro", type: "normal", accountId: "joint" },
-    { id: "dog", name: "Cão", type: "normal", accountId: "joint" },
-    { id: "extras", name: "Extras", type: "normal", accountId: "joao" },
+    { id: entitySeedIds.categories.house, name: "Casa", type: "FIXED", active: true },
+    { id: entitySeedIds.categories.car, name: "Carro", type: "VARIABLE", active: true },
+    { id: entitySeedIds.categories.dog, name: "Cão", type: "VARIABLE", active: true },
+    { id: entitySeedIds.categories.extras, name: "Extras", type: "VARIABLE", active: true },
   ],
-  categoryTemplates: [{ validFrom: "2026-01", entries: [{ categoryId: "house", expectedAmount: 1000, active: true }, { categoryId: "car", expectedAmount: 100, active: true }, { categoryId: "dog", expectedAmount: 80, active: true }, { categoryId: "extras", expectedAmount: 180, active: true }] }],
+  categoryTemplates: [{ validFrom: "2026-01", entries: [
+    { categoryId: entitySeedIds.categories.house, expectedAmount: 1000, active: true },
+    { categoryId: entitySeedIds.categories.car, expectedAmount: 100, active: true },
+    { categoryId: entitySeedIds.categories.dog, expectedAmount: 80, active: true },
+    { categoryId: entitySeedIds.categories.extras, expectedAmount: 180, active: true },
+  ] }],
   goals: [
     { id: "brazil", name: "Viagem ao Brasil", target: 4000, period: "T4", priority: "Grande", notes: "Família e memórias" },
     { id: "bustelo", name: "Bustelo", target: 20000, period: "Anual", priority: "Grande", notes: "Construção do futuro lar" },
@@ -43,10 +49,10 @@ export const exampleConfiguration: FinancialConfiguration = {
 export const exampleMonth: MonthlyPlan = {
   month: "2026-10",
   expenses: [
-    { categoryId: "house", accountId: "joint", planned: 1000, actual: 471.94 },
-    { categoryId: "car", accountId: "joint", planned: 100, actual: 130 },
-    { categoryId: "dog", accountId: "joint", planned: 80, actual: 80 },
-    { categoryId: "extras", accountId: "joao", planned: 180, actual: 210 },
+    { categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, planned: 1000, actual: 471.94 },
+    { categoryId: entitySeedIds.categories.car, accountId: entitySeedIds.accounts.joint, planned: 100, actual: 130 },
+    { categoryId: entitySeedIds.categories.dog, accountId: entitySeedIds.accounts.joint, planned: 80, actual: 80 },
+    { categoryId: entitySeedIds.categories.extras, accountId: entitySeedIds.accounts.joao, planned: 180, actual: 210 },
   ],
 };
 

@@ -43,8 +43,8 @@ export function calculateMonthlyPlan(configuration: FinancialConfiguration, annu
   const plannedExpenses = month.expenses.reduce((total, expense) => total + expense.planned, 0);
   const actualExpenses = month.expenses.reduce((total, expense) => total + expense.actual, 0);
   const fixedExpenses = month.expenses.length
-    ? month.expenses.filter((expense) => configuration.categories.find((category) => category.id === expense.categoryId)?.type === "global").reduce((total, expense) => total + expense.planned, 0)
-    : (applicableCategoryTemplate(configuration, month.month)?.entries ?? []).filter((entry) => entry.active && configuration.categories.find((category) => category.id === entry.categoryId)?.type === "global").reduce((total, entry) => total + entry.expectedAmount, 0);
+    ? month.expenses.filter((expense) => configuration.categories.find((category) => category.id === expense.categoryId)?.type === "FIXED").reduce((total, expense) => total + expense.planned, 0)
+    : (applicableCategoryTemplate(configuration, month.month)?.entries ?? []).filter((entry) => entry.active && configuration.categories.find((category) => category.id === entry.categoryId)?.active && configuration.categories.find((category) => category.id === entry.categoryId)?.type === "FIXED").reduce((total, entry) => total + entry.expectedAmount, 0);
   const dailySpending = totalIncome * configuration.dailySpendingPercentage / 100;
   const surplus = totalIncome - fixedExpenses - dailySpending;
   const emergencyFund = fixedExpenses * 1.1 * configuration.emergencyFundMonths;

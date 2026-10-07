@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { calculateMonthlyPlan } from "@/features/monthly-plan/domain/calculate-monthly-plan";
 import type { MonthlyPlan } from "@/features/monthly-plan/domain/types";
-import { loadFinanceState } from "@/shared/lib/finance-storage";
+import { loadFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
 import { initialFinanceState } from "@/shared/lib/finance-demo-state";
 import { AppNav } from "@/shared/ui/app-nav";
 import { Money } from "@/shared/ui/money";
@@ -13,7 +13,7 @@ const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set
 
 export function DashboardPage() {
   const [state, setState] = useState(initialFinanceState);
-  useEffect(() => setState(loadFinanceState(initialFinanceState)), []);
+  useEffect(() => { void loadFinanceState(initialFinanceState).then(setState).catch(showFinanceStorageError); }, []);
   const year = 2026;
   const annualPlan = state.annualPlans.find((plan) => plan.year === year) ?? { year, allocations: [] };
   const months = monthNames.map((_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
