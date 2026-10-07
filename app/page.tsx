@@ -1,5 +1,5 @@
-import { MonthlyPlanPage } from "@/features/monthly-plan/components/monthly-plan-page";
+import { DashboardPage } from "@/features/dashboard/components/dashboard-page";
 
 export default function HomePage() {
-  return <MonthlyPlanPage />;
+  return <DashboardPage />;
 }

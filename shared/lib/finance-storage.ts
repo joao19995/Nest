@@ -9,8 +9,17 @@ export function loadFinanceState(fallback: FinanceState): FinanceState {
 
   try {
     const parsed = JSON.parse(saved) as Partial<FinanceState>;
+    const configuration = parsed.configuration ?? fallback.configuration;
     return {
-      configuration: parsed.configuration ?? fallback.configuration,
+      configuration: {
+        ...fallback.configuration,
+        ...configuration,
+        emergencyFundMonths: configuration.emergencyFundMonths ?? fallback.configuration.emergencyFundMonths,
+        incomes: configuration.incomes?.map((income) => ({ ...income, bonusMonths: income.bonusMonths ?? [] })) ?? fallback.configuration.incomes,
+        categories: configuration.categories?.map((category) => ({ id: category.id, name: category.name, type: category.type ?? "normal", accountId: category.accountId ?? "joint" })) ?? fallback.configuration.categories,
+        categoryTemplates: configuration.categoryTemplates?.length ? configuration.categoryTemplates : fallback.configuration.categoryTemplates,
+      },
+      annualPlans: parsed.annualPlans?.length ? parsed.annualPlans.map((plan) => ({ ...plan, allocations: plan.allocations ?? [] })) : fallback.annualPlans,
       months: parsed.months?.length ? parsed.months : fallback.months,
     };
   } catch {

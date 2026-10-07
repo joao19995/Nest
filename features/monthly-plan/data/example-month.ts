@@ -6,11 +6,11 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: "natch", name: "Natch" },
   ],
   incomes: [
-    { personId: "joao", periods: [{ amount: 2500, validFrom: "2026-01" }, { amount: 2680, validFrom: "2026-05" }] },
-    { personId: "natch", periods: [{ amount: 2000, validFrom: "2026-01" }] },
+    { personId: "joao", periods: [{ amount: 2500, validFrom: "2026-01" }, { amount: 2680, validFrom: "2026-05" }], bonusMonths: [6, 12] },
+    { personId: "natch", periods: [{ amount: 2000, validFrom: "2026-01" }], bonusMonths: [6, 12] },
   ],
-  fixedExpenses: 1000,
   dailySpendingPercentage: 25,
+  emergencyFundMonths: 6,
   contributionRules: [
     { personId: "joao", minimumAmount: 1000 },
     { personId: "natch", minimumAmount: 800 },
@@ -21,11 +21,12 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: "joint", name: "Conjunta" },
   ],
   categories: [
-    { id: "house", name: "Casa" },
-    { id: "car", name: "Carro" },
-    { id: "dog", name: "Cão" },
-    { id: "extras", name: "Extras" },
+    { id: "house", name: "Casa", type: "global", accountId: "joint" },
+    { id: "car", name: "Carro", type: "normal", accountId: "joint" },
+    { id: "dog", name: "Cão", type: "normal", accountId: "joint" },
+    { id: "extras", name: "Extras", type: "normal", accountId: "joao" },
   ],
+  categoryTemplates: [{ validFrom: "2026-01", entries: [{ categoryId: "house", expectedAmount: 1000, active: true }, { categoryId: "car", expectedAmount: 100, active: true }, { categoryId: "dog", expectedAmount: 80, active: true }, { categoryId: "extras", expectedAmount: 180, active: true }] }],
   goals: [
     { id: "brazil", name: "Viagem ao Brasil", target: 4000, period: "T4", priority: "Grande", notes: "Família e memórias" },
     { id: "bustelo", name: "Bustelo", target: 20000, period: "Anual", priority: "Grande", notes: "Construção do futuro lar" },
@@ -37,15 +38,16 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: "picnic", name: "Piquenique romântico", target: 50, period: "T3", priority: "Nice to have", notes: "Momento especial a dois" },
     { id: "weekly", name: "Momento a dois semanal", target: 0, period: "Anual", priority: "Nice to have", notes: "Fortalecer a conexão" },
   ],
-  goalAllocation: { maxGoalsPerMonth: 1 },
 };
 
 export const exampleMonth: MonthlyPlan = {
   month: "2026-10",
   expenses: [
-    { categoryId: "house", accountId: "joint", planned: 500, actual: 471.94 },
+    { categoryId: "house", accountId: "joint", planned: 1000, actual: 471.94 },
     { categoryId: "car", accountId: "joint", planned: 100, actual: 130 },
     { categoryId: "dog", accountId: "joint", planned: 80, actual: 80 },
     { categoryId: "extras", accountId: "joao", planned: 180, actual: 210 },
   ],
 };
+
+export const exampleAnnualPlan = { year: 2026, allocations: [] };

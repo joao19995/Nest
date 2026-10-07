@@ -11,22 +11,19 @@ export type IncomePeriod = {
 export type Income = {
   personId: string;
   periods: IncomePeriod[];
+  bonusMonths: number[];
 };
 
 export type FinancialConfiguration = {
   people: Person[];
   incomes: Income[];
-  fixedExpenses: number;
   dailySpendingPercentage: number;
+  emergencyFundMonths: number;
   contributionRules: MonthlyContributionRule[];
   accounts: Account[];
   categories: Category[];
+  categoryTemplates: CategoryTemplate[];
   goals: Goal[];
-  goalAllocation: GoalAllocationRules;
-};
-
-export type GoalAllocationRules = {
-  maxGoalsPerMonth: number;
 };
 
 export type MonthlyContributionRule = {
@@ -42,6 +39,19 @@ export type Account = {
 export type Category = {
   id: string;
   name: string;
+  type: "global" | "normal";
+  accountId: string;
+};
+
+export type CategoryTemplate = {
+  validFrom: string;
+  entries: CategoryTemplateEntry[];
+};
+
+export type CategoryTemplateEntry = {
+  categoryId: string;
+  expectedAmount: number;
+  active: boolean;
 };
 
 export type Expense = {
@@ -65,14 +75,28 @@ export type MonthlyPlan = {
   expenses: Expense[];
 };
 
+export type AnnualGoalPlan = {
+  year: number;
+  allocations: GoalMonthlyAllocation[];
+};
+
+export type GoalMonthlyAllocation = {
+  month: string; // YYYY-MM
+  goalId: string;
+  amount: number;
+};
+
 export type FinanceState = {
   configuration: FinancialConfiguration;
+  annualPlans: AnnualGoalPlan[];
   months: MonthlyPlan[];
 };
 
 export type MonthlyCalculation = {
   incomeByPerson: { personId: string; amount: number }[];
   totalIncome: number;
+  bonusesByPerson: { personId: string; amount: number }[];
+  totalBonus: number;
   plannedExpenses: number;
   actualExpenses: number;
   fixedExpenses: number;
@@ -84,18 +108,15 @@ export type MonthlyCalculation = {
   transfers: TransferCalculation[];
   surplusAfterTransfers: number;
   availableForGoals: number;
-  goalAllocations: GoalAllocation[];
+  goalAllocations: GoalMonthlyAllocation[];
+  allocatedToGoals: number;
+  unallocatedForGoals: number;
 };
 
 export type TransferCalculation = {
   personId: string;
   minimumAmount: number;
-  amount: number | null;
-  accountId: string;
-  status: "calculated" | "pending-extra-allocation";
-};
-
-export type GoalAllocation = {
-  goalId: string;
   amount: number;
+  accountId: string;
+  status: "calculated";
 };
