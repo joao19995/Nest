@@ -6,8 +6,8 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: "natch", name: "Natch" },
   ],
   incomes: [
-    { personId: "joao", periods: [{ amount: 2500, validFrom: "2026-01" }, { amount: 2680, validFrom: "2026-05" }], annualSubsidies: 5360 },
-    { personId: "natch", periods: [{ amount: 2000, validFrom: "2026-01" }], annualSubsidies: 4000 },
+    { personId: "joao", periods: [{ amount: 2500, validFrom: "2026-01" }, { amount: 2680, validFrom: "2026-05" }] },
+    { personId: "natch", periods: [{ amount: 2000, validFrom: "2026-01" }] },
   ],
   fixedExpenses: 1000,
   dailySpendingPercentage: 25,
@@ -37,6 +37,7 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: "picnic", name: "Piquenique romântico", target: 50, period: "T3", priority: "Nice to have", notes: "Momento especial a dois" },
     { id: "weekly", name: "Momento a dois semanal", target: 0, period: "Anual", priority: "Nice to have", notes: "Fortalecer a conexão" },
   ],
+  goalAllocation: { maxGoalsPerMonth: 1 },
 };
 
 export const exampleMonth: MonthlyPlan = {

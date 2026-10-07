@@ -11,7 +11,6 @@ export type IncomePeriod = {
 export type Income = {
   personId: string;
   periods: IncomePeriod[];
-  annualSubsidies?: number;
 };
 
 export type FinancialConfiguration = {
@@ -23,6 +22,11 @@ export type FinancialConfiguration = {
   accounts: Account[];
   categories: Category[];
   goals: Goal[];
+  goalAllocation: GoalAllocationRules;
+};
+
+export type GoalAllocationRules = {
+  maxGoalsPerMonth: number;
 };
 
 export type MonthlyContributionRule = {
@@ -71,11 +75,24 @@ export type MonthlyCalculation = {
   totalIncome: number;
   plannedExpenses: number;
   actualExpenses: number;
+  fixedExpenses: number;
   dailySpending: number;
   surplus: number;
   emergencyFund: number;
-  transfers: { personId: string; amount: number; accountId: string }[];
+  totalJointExpenses: number;
+  totalTransferRequirement: number;
+  transfers: TransferCalculation[];
+  surplusAfterTransfers: number;
   availableForGoals: number;
+  goalAllocations: GoalAllocation[];
+};
+
+export type TransferCalculation = {
+  personId: string;
+  minimumAmount: number;
+  amount: number | null;
+  accountId: string;
+  status: "calculated" | "pending-extra-allocation";
 };
 
 export type GoalAllocation = {
