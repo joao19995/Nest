@@ -28,10 +28,10 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: entitySeedIds.categories.extras, name: "Extras", type: "VARIABLE", active: true },
   ],
   categoryTemplates: [{ validFrom: "2026-01", entries: [
-    { categoryId: entitySeedIds.categories.house, expectedAmount: 1000, active: true },
-    { categoryId: entitySeedIds.categories.car, expectedAmount: 100, active: true },
-    { categoryId: entitySeedIds.categories.dog, expectedAmount: 80, active: true },
-    { categoryId: entitySeedIds.categories.extras, expectedAmount: 180, active: true },
+    { categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, expectedAmount: 1000, active: true },
+    { categoryId: entitySeedIds.categories.car, accountId: entitySeedIds.accounts.joint, expectedAmount: 100, active: true },
+    { categoryId: entitySeedIds.categories.dog, accountId: entitySeedIds.accounts.joint, expectedAmount: 80, active: true },
+    { categoryId: entitySeedIds.categories.extras, accountId: entitySeedIds.accounts.joao, expectedAmount: 180, active: true },
   ] }],
   goals: [
     { id: "brazil", name: "Viagem ao Brasil", target: 4000, period: "T4", priority: "Grande", notes: "Família e memórias" },

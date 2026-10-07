@@ -1,8 +1,9 @@
-import type { FinanceState, FinancialConfiguration } from "@/features/monthly-plan/domain/types";
-import { legacyAccountIds, legacyCategoryIds, legacyPersonIds } from "@/shared/lib/entity-seed-ids";
+import type { CategoryTemplateEntry, FinanceState, FinancialConfiguration } from "@/features/monthly-plan/domain/types";
+import { entitySeedIds, legacyAccountIds, legacyCategoryIds, legacyPersonIds } from "@/shared/lib/entity-seed-ids";
 import { entitiesClient } from "@/shared/lib/entities-client";
 
 const STORAGE_KEY = "our-finances-state";
+type LegacyStoredCategory = { id: string; accountId?: unknown };
 
 function migrateLocalFinanceState(value: unknown, fallback: FinanceState): FinanceState {
   if (!value || typeof value !== "object") return fallback;
@@ -10,6 +11,13 @@ function migrateLocalFinanceState(value: unknown, fallback: FinanceState): Finan
   const parsed = value as Partial<FinanceState>;
   const configuration = parsed.configuration ?? fallback.configuration;
   const { people: _people, accounts: _accounts, categories: _categories, ...localConfiguration } = configuration as FinancialConfiguration;
+  const legacyCategories = (configuration as unknown as { categories?: LegacyStoredCategory[] }).categories ?? [];
+  const legacyCategoryAccounts = new Map(legacyCategories.map((category) => {
+    const categoryId = legacyCategoryIds[category.id] ?? category.id;
+    const oldAccountId = category["accountId"];
+    const accountId = typeof oldAccountId === "string" ? legacyAccountIds[oldAccountId] ?? oldAccountId : entitySeedIds.accounts.joint;
+    return [categoryId, accountId] as const;
+  }));
 
   return {
     configuration: {
@@ -30,7 +38,14 @@ function migrateLocalFinanceState(value: unknown, fallback: FinanceState): Finan
       })) ?? fallback.configuration.contributionRules,
       categoryTemplates: (configuration.categoryTemplates?.length ? configuration.categoryTemplates : fallback.configuration.categoryTemplates).map((template) => ({
         ...template,
-        entries: template.entries.map((entry) => ({ ...entry, categoryId: legacyCategoryIds[entry.categoryId] ?? entry.categoryId })),
+        entries: template.entries.map((entry) => {
+          const legacyEntry = entry as CategoryTemplateEntry & { accountId?: string };
+          const categoryId = legacyCategoryIds[entry.categoryId] ?? entry.categoryId;
+          const accountId = legacyEntry.accountId
+            ? legacyAccountIds[legacyEntry.accountId] ?? legacyEntry.accountId
+            : legacyCategoryAccounts.get(categoryId) ?? entitySeedIds.accounts.joint;
+          return { ...entry, categoryId, accountId };
+        }),
       })),
     },
     annualPlans: parsed.annualPlans?.length ? parsed.annualPlans.map((plan) => ({ ...plan, allocations: plan.allocations ?? [] })) : fallback.annualPlans,

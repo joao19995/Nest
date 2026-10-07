@@ -51,6 +51,7 @@ export type CategoryTemplate = {
 
 export type CategoryTemplateEntry = {
   categoryId: string;
+  accountId: string;
   expectedAmount: number;
   active: boolean;
 };

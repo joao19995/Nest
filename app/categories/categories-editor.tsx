@@ -8,7 +8,7 @@ import { AppNav } from "@/shared/ui/app-nav";
 import { Money } from "@/shared/ui/money";
 import type { Category, CategoryTemplateEntry, FinanceState } from "@/features/monthly-plan/domain/types";
 
-type TemplateDraft = { expectedAmount: number; active: boolean };
+type TemplateDraft = { expectedAmount: number; active: boolean; accountId: string };
 type CategoryDraft = { name: string; type: Category["type"] };
 
 export function CategoriesEditor() {
@@ -34,6 +34,7 @@ export function CategoriesEditor() {
         return [category.id, {
           expectedAmount: entry?.expectedAmount ?? 0,
           active: entry?.active ?? false,
+          accountId: entry?.accountId ?? loaded.configuration.accounts.find((account) => account.name === "Conjunta")?.id ?? loaded.configuration.accounts[0]?.id ?? "",
         }];
       })));
     }).catch(showFinanceStorageError);
@@ -57,7 +58,8 @@ export function CategoriesEditor() {
       const category = await entitiesClient.createCategory(newCategoryName, newCategoryType);
       setState((current) => ({ ...current, configuration: { ...current.configuration, categories: [...current.configuration.categories, category] } }));
       setCategoryDrafts((current) => ({ ...current, [category.id]: { name: category.name, type: category.type } }));
-      setDrafts((current) => ({ ...current, [category.id]: { expectedAmount: 0, active: true } }));
+      const defaultAccountId = state.configuration.accounts.find((account) => account.name === "Conjunta")?.id ?? state.configuration.accounts[0]?.id ?? "";
+      setDrafts((current) => ({ ...current, [category.id]: { expectedAmount: 0, active: true, accountId: defaultAccountId } }));
       setNewCategoryName("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível criar a categoria.");
@@ -90,6 +92,7 @@ export function CategoriesEditor() {
     const preservedInactiveEntries = currentTemplate?.entries.filter((entry) => !selectableCategories.some((category) => category.id === entry.categoryId)) ?? [];
     const entries: CategoryTemplateEntry[] = [...preservedInactiveEntries, ...selectableCategories.map((category) => ({
       categoryId: category.id,
+      accountId: drafts[category.id]?.accountId ?? state.configuration.accounts.find((account) => account.name === "Conjunta")?.id ?? state.configuration.accounts[0]?.id ?? "",
       expectedAmount: drafts[category.id]?.expectedAmount ?? 0,
       active: drafts[category.id]?.active ?? false,
     }))];
@@ -113,15 +116,16 @@ export function CategoriesEditor() {
           <label>Tipo<select value={newCategoryType} onChange={(event) => setNewCategoryType(event.target.value as Category["type"])}><option value="FIXED">Fixa</option><option value="VARIABLE">Variável</option></select></label>
           <button className="secondary-button" onClick={createCategory}>+ Nova categoria</button>
         </div>
-        <div className="category-table category-management category-table-three">
-          <div className="category-table-row category-table-header"><span>Nome</span><span>Tipo</span><span>Ação</span></div>
+        <div className="category-table category-management">
+          <div className="category-table-row category-table-header"><span>Nome</span><span>Tipo</span><span>Estado</span><span>Ação</span></div>
           {state.configuration.categories.map((category) => {
             const draft = categoryDrafts[category.id] ?? { name: category.name, type: category.type };
             return <div className="category-table-row" key={category.id}>
               <label><input value={draft.name} onChange={(event) => setCategoryDrafts((current) => ({ ...current, [category.id]: { ...draft, name: event.target.value } }))} maxLength={100} /></label>
               <select value={draft.type} onChange={(event) => setCategoryDrafts((current) => ({ ...current, [category.id]: { ...draft, type: event.target.value as Category["type"] } }))}><option value="FIXED">Fixa</option><option value="VARIABLE">Variável</option></select>
+              <span className={`category-state ${category.active ? "is-active" : "is-inactive"}`}>{category.active ? "Ativa" : "Inativa"}</span>
               <div className="entity-action-buttons">
-                <button className="inline-button" onClick={() => updateCategory(category, category.active)}>Guardar</button>
+                <button className="inline-button" onClick={() => updateCategory(category, category.active)}>Editar</button>
                 {category.active
                   ? <button className="remove-button" aria-label={`Desativar ${category.name}`} title="Desativar" onClick={() => deactivateCategory(category)}>Desativar</button>
                   : <button className="inline-button" onClick={() => updateCategory(category, true)}>Reativar</button>}
@@ -139,13 +143,14 @@ export function CategoriesEditor() {
 
       <section className="settings-section">
         <div className="section-title"><div><p className="eyebrow">Template local</p><h2>Template mensal</h2></div><label className="template-date">Aplicável a partir de <input type="month" value={templateDate} onChange={(event) => setTemplateDate(event.target.value)} /></label></div>
-        <p className="form-note">O template mensal continua guardado localmente e será migrado numa fase posterior.</p>
+        <p className="form-note">O template mensal continua guardado localmente. A conta pertence ao template, não à categoria.</p>
         <div className="category-table category-template">
-          <div className="category-table-row category-table-header"><span>Categoria</span><span>Valor esperado</span><span>Usar no template</span></div>
+          <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Valor esperado</span><span>Usar no template</span></div>
           {selectableCategories.map((category) => {
-            const draft = drafts[category.id] ?? { expectedAmount: 0, active: false };
+            const draft = drafts[category.id] ?? { expectedAmount: 0, active: false, accountId: state.configuration.accounts.find((account) => account.name === "Conjunta")?.id ?? "" };
             return <div className="category-table-row" key={category.id}>
               <strong>{category.name}<small>{category.type === "FIXED" ? "Fixa" : "Variável"}</small></strong>
+              <select aria-label={`Conta do template para ${category.name}`} value={draft.accountId} onChange={(event) => changeTemplateDraft(category.id, { accountId: event.target.value })}>{state.configuration.accounts.map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}</select>
               <label><input type="number" value={draft.expectedAmount} onChange={(event) => changeTemplateDraft(category.id, { expectedAmount: Number(event.target.value) })} /></label>
               <label className="active-toggle"><input type="checkbox" checked={draft.active} onChange={(event) => changeTemplateDraft(category.id, { active: event.target.checked })} /><span>{draft.active ? "Sim" : "Não"}</span></label>
             </div>;
