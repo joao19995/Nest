@@ -1,49 +1,38 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { exampleMonth } from "@/features/monthly-plan/data/example-month";
-import type { Goal, MonthlyPlan } from "@/features/monthly-plan/domain/types";
-import { loadMonthlyPlan, resetMonthlyPlan, saveMonthlyPlan } from "@/shared/lib/finance-storage";
+import { exampleConfiguration, exampleMonth } from "@/features/monthly-plan/data/example-month";
+import type { FinanceState } from "@/features/monthly-plan/domain/types";
+import { loadFinanceState, resetFinanceState, saveFinanceState } from "@/shared/lib/finance-storage";
 import { Money } from "@/shared/ui/money";
 
+const initialState: FinanceState = { configuration: exampleConfiguration, months: [exampleMonth] };
+
 export function SettingsEditor() {
-  const [plan, setPlan] = useState<MonthlyPlan>(exampleMonth);
+  const [state, setState] = useState(initialState);
   const [saved, setSaved] = useState(false);
+  useEffect(() => setState(loadFinanceState(initialState)), []);
+  const configuration = state.configuration;
 
-  useEffect(() => setPlan(loadMonthlyPlan(exampleMonth)), []);
-
-  function updatePerson(index: number, field: "income" | "fixedExpenses" | "dailyAmount" | "budget", value: number) {
-    setPlan((current) => ({ ...current, people: current.people.map((person, personIndex) => personIndex === index ? { ...person, [field]: value } : person) }));
+  function updateConfiguration(changes: Partial<typeof configuration>) {
+    setState((current) => ({ ...current, configuration: { ...current.configuration, ...changes } }));
     setSaved(false);
   }
 
-  function addIncomeRecord(index: number) {
-    const person = plan.people[index];
-    const validFrom = window.prompt("A partir de que mês?", "Novembro 2026");
-    if (!validFrom) return;
-    setPlan((current) => ({ ...current, people: current.people.map((item, personIndex) => personIndex === index ? { ...item, incomeHistory: [...item.incomeHistory, { amount: item.income, validFrom }] } : item) }));
-    setSaved(false);
+  function updateIncome(personId: string, amount: number) {
+    updateConfiguration({ incomes: configuration.incomes.map((income) => income.personId === personId ? { ...income, periods: income.periods.map((period, index) => index === income.periods.length - 1 ? { ...period, amount } : period) } : income) });
   }
 
-  function updateGoal(index: number, changes: Partial<Goal>) {
-    setPlan((current) => ({ ...current, goals: current.goals.map((goal, goalIndex) => goalIndex === index ? { ...goal, ...changes } : goal) }));
-    setSaved(false);
+  function updateContribution(personId: string, minimumAmount: number) {
+    updateConfiguration({ contributionRules: configuration.contributionRules.map((rule) => rule.personId === personId ? { ...rule, minimumAmount } : rule) });
   }
 
-  function save() {
-    saveMonthlyPlan(plan);
-    setSaved(true);
+  function updateGoal(index: number, target: number) {
+    updateConfiguration({ goals: configuration.goals.map((goal, goalIndex) => goalIndex === index ? { ...goal, target } : goal) });
   }
 
-  function reset() {
-    resetMonthlyPlan();
-    setPlan(exampleMonth);
-    setSaved(false);
-  }
+  function save() { saveFinanceState(state); setSaved(true); }
+  function reset() { resetFinanceState(); setState(initialState); setSaved(false); }
 
-  return <>
-    <div className="editor-actions"><button className="secondary-button" type="button" onClick={reset}>Repor exemplos</button><button className="save-button" type="button" onClick={save}>{saved ? "Guardado" : "Guardar configurações"}</button></div>
-    <section className="settings-section"><div className="section-title"><div><p className="eyebrow">Base mensal</p><h2>Pessoas e rendimentos</h2></div><span className="settings-status">Histórico ativo</span></div><div className="editable-people">{plan.people.map((person, index) => <div className="editable-person" key={person.name}><div className="person-name"><strong>{person.name}</strong><small>Último registo: {person.incomeHistory[person.incomeHistory.length - 1].validFrom}</small><button className="inline-button" type="button" onClick={() => addIncomeRecord(index)}>+ Adicionar alteração</button></div><label>Rendimento atual<input type="number" value={person.income} onChange={(event) => updatePerson(index, "income", Number(event.target.value))} /></label><label>Gastos fixos<input type="number" value={person.fixedExpenses} onChange={(event) => updatePerson(index, "fixedExpenses", Number(event.target.value))} /></label><label>Dia a dia<input type="number" value={person.dailyAmount} onChange={(event) => updatePerson(index, "dailyAmount", Number(event.target.value))} /></label><label>Budget mensal<input type="number" value={person.budget} onChange={(event) => updatePerson(index, "budget", Number(event.target.value))} /></label></div>)}</div></section>
-    <section className="settings-section"><div className="section-title"><div><p className="eyebrow">Objetivos anuais</p><h2>Goals e prioridades</h2></div><span className="settings-status">Ano 2026</span></div><div className="editable-goals">{plan.goals.map((goal, index) => <div className="editable-goal" key={goal.name}><div><strong>{goal.name}</strong><small>{goal.notes}</small></div><label>Valor-alvo<input type="number" value={goal.target} onChange={(event) => updateGoal(index, { target: Number(event.target.value) })} /></label><label>Período<select value={goal.period} onChange={(event) => updateGoal(index, { period: event.target.value })}><option>Anual</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></label><label>Prioridade<select value={goal.priority} onChange={(event) => updateGoal(index, { priority: event.target.value as Goal["priority"] })}><option>Grande</option><option>Nice to have</option></select></label><span className="goal-annual-value"><Money value={goal.target} /></span></div>)}</div></section>
-  </>;
+  return <><div className="editor-actions"><button className="secondary-button" onClick={reset}>Repor exemplos</button><button className="save-button" onClick={save}>{saved ? "Guardado" : "Guardar configurações"}</button></div><section className="settings-section"><div className="section-title"><div><p className="eyebrow">Configuração</p><h2>Regras globais</h2></div><span className="settings-status">Aplicadas a cada mês</span></div><div className="global-settings"><label>Gastos fixos globais<input type="number" value={configuration.fixedExpenses} onChange={(event) => updateConfiguration({ fixedExpenses: Number(event.target.value) })} /></label><label>Dia a dia (% do rendimento)<input type="number" value={configuration.dailySpendingPercentage} onChange={(event) => updateConfiguration({ dailySpendingPercentage: Number(event.target.value) })} /></label><div className="calculated-setting"><small>Fundo de emergência</small><strong><Money value={configuration.fixedExpenses * 1.1 * 6} /></strong><span>gastos fixos × 110% × 6</span></div></div></section><section className="settings-section"><div className="section-title"><div><p className="eyebrow">Pessoas</p><h2>Rendimentos e contribuições</h2></div><span className="settings-status">Histórico por período</span></div><div className="editable-people">{configuration.people.map((person) => { const income = configuration.incomes.find((item) => item.personId === person.id)!; const currentPeriod = income.periods[income.periods.length - 1]; const rule = configuration.contributionRules.find((item) => item.personId === person.id); return <div className="editable-person" key={person.id}><div className="person-name"><strong>{person.name}</strong><small>Último registo: {currentPeriod.validFrom}</small></div><label>Rendimento atual<input type="number" value={currentPeriod.amount} onChange={(event) => updateIncome(person.id, Number(event.target.value))} /></label><label>Contribuição mínima<input type="number" value={rule?.minimumAmount ?? 0} onChange={(event) => updateContribution(person.id, Number(event.target.value))} /></label><div className="history-summary"><small>Histórico</small>{income.periods.map((period) => <span key={period.validFrom}>{period.validFrom}: <Money value={period.amount} /></span>)}</div></div>; })}</div></section><section className="settings-section"><div className="section-title"><div><p className="eyebrow">Objetivos anuais</p><h2>Goals</h2></div><span className="settings-status">{configuration.goals.length} configurados</span></div><div className="editable-goals">{configuration.goals.map((goal, index) => <div className="editable-goal" key={goal.id}><div><strong>{goal.name}</strong><small>{goal.period} · {goal.priority}</small></div><label>Valor-alvo<input type="number" value={goal.target} onChange={(event) => updateGoal(index, Number(event.target.value))} /></label><span className="goal-annual-value"><Money value={goal.target} /></span></div>)}</div></section></>;
 }

@@ -1,18 +1,45 @@
-import type { MonthlyPlan, MonthlySummary } from "./types";
+import type { FinancialConfiguration, MonthlyCalculation, MonthlyPlan } from "./types";
 
-export function calculateMonthlySummary(plan: MonthlyPlan): MonthlySummary {
-  const income = plan.people.reduce((total, person) => total + person.income, 0);
-  const plannedExpenses = plan.expenses.reduce((total, expense) => total + expense.planned, 0);
-  const actualExpenses = plan.expenses.reduce((total, expense) => total + expense.actual, 0);
-  const fixedExpenses = plan.people.reduce((total, person) => total + person.fixedExpenses, 0);
-  const dayToDay = plan.people.reduce((total, person) => total + person.dailyAmount, 0);
-  const surplus = income - fixedExpenses - dayToDay;
-  const emergencyFund = (fixedExpenses * 1.1) * 6;
-  const emergencyFundByPerson = plan.people.map((person) => ({
-    person: person.name,
-    amount: (person.fixedExpenses * 1.1) * 6,
+function applicableIncome(configuration: FinancialConfiguration, personId: string, month: string) {
+  const income = configuration.incomes.find((item) => item.personId === personId);
+  if (!income) return 0;
+
+  return income.periods
+    .filter((period) => period.validFrom <= month)
+    .sort((a, b) => a.validFrom.localeCompare(b.validFrom))
+    .at(-1)?.amount ?? 0;
+}
+
+export function calculateMonthlyPlan(configuration: FinancialConfiguration, month: MonthlyPlan): MonthlyCalculation {
+  const incomeByPerson = configuration.people.map((person) => ({
+    personId: person.id,
+    amount: applicableIncome(configuration, person.id, month.month),
   }));
-  const transfers = plan.transfers.reduce((total, transfer) => total + transfer.amount, 0);
+  const totalIncome = incomeByPerson.reduce((total, income) => total + income.amount, 0);
+  const plannedExpenses = month.expenses.reduce((total, expense) => total + expense.planned, 0);
+  const actualExpenses = month.expenses.reduce((total, expense) => total + expense.actual, 0);
+  const dailySpending = totalIncome * configuration.dailySpendingPercentage / 100;
+  const surplus = totalIncome - configuration.fixedExpenses - dailySpending;
+  const emergencyFund = configuration.fixedExpenses * 1.1 * 6;
+  const jointAccount = configuration.accounts.find((account) => account.name === "Conjunta");
+  const jointExpenses = month.expenses
+    .filter((expense) => expense.accountId === jointAccount?.id)
+    .reduce((total, expense) => total + expense.actual, 0);
+  const transfers = configuration.people.map((person) => ({
+    personId: person.id,
+    amount: Math.max(configuration.contributionRules.find((rule) => rule.personId === person.id)?.minimumAmount ?? 0, jointExpenses),
+    accountId: jointAccount?.id ?? "",
+  }));
 
-  return { income, plannedExpenses, actualExpenses, surplus, emergencyFund, emergencyFundByPerson, transfers, dayToDay };
+  return {
+    incomeByPerson,
+    totalIncome,
+    plannedExpenses,
+    actualExpenses,
+    dailySpending,
+    surplus,
+    emergencyFund,
+    transfers,
+    availableForGoals: Math.max(surplus, 0),
+  };
 }

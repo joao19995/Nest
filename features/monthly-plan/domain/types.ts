@@ -1,55 +1,84 @@
 export type Person = {
+  id: string;
   name: string;
-  income: number;
-  incomeHistory: IncomeRecord[];
-  annualSubsidies?: number;
-  fixedExpenses: number;
-  dailyAmount: number;
-  budget: number;
 };
 
-export type IncomeRecord = {
+export type IncomePeriod = {
   amount: number;
-  validFrom: string;
+  validFrom: string; // YYYY-MM
+};
+
+export type Income = {
+  personId: string;
+  periods: IncomePeriod[];
+  annualSubsidies?: number;
+};
+
+export type FinancialConfiguration = {
+  people: Person[];
+  incomes: Income[];
+  fixedExpenses: number;
+  dailySpendingPercentage: number;
+  contributionRules: MonthlyContributionRule[];
+  accounts: Account[];
+  categories: Category[];
+  goals: Goal[];
+};
+
+export type MonthlyContributionRule = {
+  personId: string;
+  minimumAmount: number;
+};
+
+export type Account = {
+  id: string;
+  name: string;
+};
+
+export type Category = {
+  id: string;
+  name: string;
 };
 
 export type Expense = {
-  category: string;
+  categoryId: string;
+  accountId: string;
   planned: number;
   actual: number;
 };
 
-export type MonthlyTransfer = {
-  person: string;
-  amount: number;
-  account: string;
-};
-
 export type Goal = {
+  id: string;
   name: string;
   target: number;
-  allocated: number;
-  color: string;
   period: string;
   priority: "Grande" | "Nice to have";
   notes: string;
 };
 
 export type MonthlyPlan = {
-  month: string;
-  people: Person[];
+  month: string; // YYYY-MM
   expenses: Expense[];
-  transfers: MonthlyTransfer[];
-  goals: Goal[];
 };
 
-export type MonthlySummary = {
-  income: number;
+export type FinanceState = {
+  configuration: FinancialConfiguration;
+  months: MonthlyPlan[];
+};
+
+export type MonthlyCalculation = {
+  incomeByPerson: { personId: string; amount: number }[];
+  totalIncome: number;
   plannedExpenses: number;
   actualExpenses: number;
+  dailySpending: number;
   surplus: number;
   emergencyFund: number;
-  emergencyFundByPerson: { person: string; amount: number }[];
-  transfers: number;
-  dayToDay: number;
+  transfers: { personId: string; amount: number; accountId: string }[];
+  availableForGoals: number;
+};
+
+export type GoalAllocation = {
+  goalId: string;
+  amount: number;
 };
