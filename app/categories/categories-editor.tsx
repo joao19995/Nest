@@ -213,36 +213,6 @@ export function CategoriesEditor() {
       <div className="page-heading"><p className="eyebrow">Configuração</p><h1>Categorias</h1><p className="lede">Gere categorias e templates mensais separadamente.</p></div>
       {error && <p className="form-error" role="alert">{error}</p>}
 
-      <section className="settings-section">
-        <div className="section-title"><div><p className="eyebrow">Gestão</p><h2>Gerir categorias</h2></div><button className="secondary-button" onClick={openCreateCategory}>+ Nova categoria</button></div>
-        <div className="category-table category-management">
-          <div className="category-table-row category-table-header"><span>Nome</span><span>Tipo</span><span>Estado</span><span>Ação</span></div>
-          {state.configuration.categories.map((category) => <div className="category-table-row" key={category.id}>
-            <strong>{category.name}</strong>
-            <span>{category.type === "FIXED" ? "Fixa" : "Variável"}</span>
-            <span className={`category-state ${category.active ? "is-active" : "is-inactive"}`}>{category.active ? "Ativa" : "Inativa"}</span>
-            <div className="entity-action-buttons">
-              <button className="entity-edit-button" type="button" title={`Editar ${category.name}`} aria-label={`Editar categoria ${category.name}`} onClick={() => openEditCategory(category)}>{editIcon}</button>
-              {category.active
-                ? <button className="entity-edit-button entity-remove-button" type="button" title={`Desativar ${category.name}`} aria-label={`Desativar categoria ${category.name}`} onClick={() => void deactivateCategory(category)}>{removeIcon}</button>
-                : <button className="entity-edit-button" type="button" title={`Reativar ${category.name}`} aria-label={`Reativar categoria ${category.name}`} onClick={() => void reactivateCategory(category)}>{restoreIcon}</button>}
-            </div>
-          </div>)}
-        </div>
-      </section>
-
-      {categoryModalOpen && <div className="entity-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingCategory) setCategoryModalOpen(false); }}>
-        <section className="entity-modal" role="dialog" aria-modal="true" aria-labelledby="category-modal-title">
-          <div className="entity-modal-heading"><div><p className="eyebrow">Categorias</p><h2 id="category-modal-title">{editingCategoryId ? "Editar categoria" : "Nova categoria"}</h2></div><button className="entity-modal-close" type="button" aria-label="Fechar" onClick={() => setCategoryModalOpen(false)} disabled={savingCategory}>×</button></div>
-          <form onSubmit={(event) => { event.preventDefault(); void saveCategory(); }}>
-            <label className="entity-modal-field">Nome<input autoFocus required maxLength={100} value={categoryForm.name} onChange={(event) => setCategoryForm((current) => ({ ...current, name: event.target.value }))} /></label>
-            <label className="entity-modal-field">Tipo<select value={categoryForm.type} onChange={(event) => setCategoryForm((current) => ({ ...current, type: event.target.value as Category["type"] }))}><option value="FIXED">Fixa</option><option value="VARIABLE">Variável</option></select></label>
-            {categoryFormError && <p className="form-error" role="alert">{categoryFormError}</p>}
-            <div className="entity-modal-actions"><button className="secondary-button" type="button" onClick={() => setCategoryModalOpen(false)} disabled={savingCategory}>Cancelar</button><button className="save-button" type="submit" disabled={savingCategory}>{savingCategory ? "A guardar…" : "Guardar categoria"}</button></div>
-          </form>
-        </section>
-      </div>}
-
       <section className="category-totals">
         <article className="panel"><p className="eyebrow">Template ativo + margem</p><h2><Money value={expectedTotal * 1.1} /></h2><p>{visibleEntries.length} entradas ativas com 10%.</p></article>
         <article className="panel"><p className="eyebrow">Despesas fixas</p><h2><Money value={fixedTotal} /></h2><p>Categorias do tipo Fixa.</p></article>
@@ -273,6 +243,36 @@ export function CategoriesEditor() {
           {!visibleEntries.length && <p className="form-note">Este template não tem categorias ativas.</p>}
         </div>
       </section>
+
+      <section className="settings-section">
+        <div className="section-title"><div><p className="eyebrow">Gestão</p><h2>Gerir categorias</h2></div><button className="secondary-button" onClick={openCreateCategory}>+ Nova categoria</button></div>
+        <div className="category-table category-management">
+          <div className="category-table-row category-table-header"><span>Nome</span><span>Tipo</span><span>Estado</span><span>Ação</span></div>
+          {state.configuration.categories.map((category) => <div className="category-table-row" key={category.id}>
+            <strong>{category.name}</strong>
+            <span>{category.type === "FIXED" ? "Fixa" : "Variável"}</span>
+            <span className={`category-state ${category.active ? "is-active" : "is-inactive"}`}>{category.active ? "Ativa" : "Inativa"}</span>
+            <div className="entity-action-buttons">
+              <button className="entity-edit-button" type="button" title={`Editar ${category.name}`} aria-label={`Editar categoria ${category.name}`} onClick={() => openEditCategory(category)}>{editIcon}</button>
+              {category.active
+                ? <button className="entity-edit-button entity-remove-button" type="button" title={`Desativar ${category.name}`} aria-label={`Desativar categoria ${category.name}`} onClick={() => void deactivateCategory(category)}>{removeIcon}</button>
+                : <button className="entity-edit-button" type="button" title={`Reativar ${category.name}`} aria-label={`Reativar categoria ${category.name}`} onClick={() => void reactivateCategory(category)}>{restoreIcon}</button>}
+            </div>
+          </div>)}
+        </div>
+      </section>
+
+      {categoryModalOpen && <div className="entity-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingCategory) setCategoryModalOpen(false); }}>
+        <section className="entity-modal" role="dialog" aria-modal="true" aria-labelledby="category-modal-title">
+          <div className="entity-modal-heading"><div><p className="eyebrow">Categorias</p><h2 id="category-modal-title">{editingCategoryId ? "Editar categoria" : "Nova categoria"}</h2></div><button className="entity-modal-close" type="button" aria-label="Fechar" onClick={() => setCategoryModalOpen(false)} disabled={savingCategory}>×</button></div>
+          <form onSubmit={(event) => { event.preventDefault(); void saveCategory(); }}>
+            <label className="entity-modal-field">Nome<input autoFocus required maxLength={100} value={categoryForm.name} onChange={(event) => setCategoryForm((current) => ({ ...current, name: event.target.value }))} /></label>
+            <label className="entity-modal-field">Tipo<select value={categoryForm.type} onChange={(event) => setCategoryForm((current) => ({ ...current, type: event.target.value as Category["type"] }))}><option value="FIXED">Fixa</option><option value="VARIABLE">Variável</option></select></label>
+            {categoryFormError && <p className="form-error" role="alert">{categoryFormError}</p>}
+            <div className="entity-modal-actions"><button className="secondary-button" type="button" onClick={() => setCategoryModalOpen(false)} disabled={savingCategory}>Cancelar</button><button className="save-button" type="submit" disabled={savingCategory}>{savingCategory ? "A guardar…" : "Guardar categoria"}</button></div>
+          </form>
+        </section>
+      </div>}
 
       {templateModalOpen && <div className="entity-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !templateSaving) setTemplateModalOpen(false); }}>
         <section className="entity-modal template-modal" role="dialog" aria-modal="true" aria-labelledby="template-modal-title">
