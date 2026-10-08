@@ -59,6 +59,27 @@ export type CategoryTemplateEntryView = CategoryTemplateEntry & {
 
 export type CategoryTemplateView = Omit<CategoryTemplate, "entries"> & { entries: CategoryTemplateEntryView[] };
 
+// Mês persistido: planned é um snapshot do template (imutável); actual é editável enquanto o mês estiver aberto.
+export type MonthlyPlanEntryView = {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  categoryType: Category["type"];
+  accountId: string;
+  accountName: string;
+  accountOwnerPersonId: string | null;
+  planned: number;
+  actual: number;
+};
+
+export type MonthlyPlanView = {
+  id: string;
+  month: string; // YYYY-MM
+  templateId: string;
+  closed: boolean;
+  entries: MonthlyPlanEntryView[];
+};
+
 export type Expense = {
   categoryId: string;
   accountId: string;

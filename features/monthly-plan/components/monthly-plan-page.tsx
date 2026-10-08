@@ -1,31 +1,195 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { calculateMonthlyPlan } from "../domain/calculate-monthly-plan";
 import { initialFinanceState } from "@/shared/lib/finance-demo-state";
-import type { FinanceState } from "../domain/types";
-import { loadFinanceState, saveFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
+import { entitiesClient } from "@/shared/lib/entities-client";
+import { loadFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
 import { AppNav } from "@/shared/ui/app-nav";
-import { Money } from "@/shared/ui/money";
+import { calculateMonthContributions, totalActual, totalPlanned } from "../domain/month-planning";
+import type { FinanceState, MonthlyPlanEntryView, MonthlyPlanView } from "../domain/types";
 
-function displayMonth(month: string) { return new Intl.DateTimeFormat("pt-PT", { month: "long", year: "numeric" }).format(new Date(`${month}-01`)); }
+function currentMonth() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function shiftMonth(month: string, delta: number) {
+  const date = new Date(`${month}-01T00:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + delta);
+  return date.toISOString().slice(0, 7);
+}
+
+function displayMonth(month: string) {
+  return new Intl.DateTimeFormat("pt-PT", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+}
+
+function euro(value: number) {
+  return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(value);
+}
 
 export function MonthlyPlanPage() {
   const [state, setState] = useState<FinanceState>(initialFinanceState);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [saved, setSaved] = useState(false);
-  useEffect(() => { void loadFinanceState(initialFinanceState).then(setState).catch(showFinanceStorageError); }, []);
-  const month = state.months[selectedIndex] ?? state.months[0];
-  const year = Number(month.month.slice(0, 4));
-  const annualPlan = state.annualPlans.find((plan) => plan.year === year) ?? { year, allocations: [] };
-  const calculation = calculateMonthlyPlan(state.configuration, annualPlan, month);
-  const categoryName = (id: string) => state.configuration.categories.find((category) => category.id === id)?.name ?? id;
-  const personName = (id: string) => state.configuration.people.find((person) => person.id === id)?.name ?? id;
+  const [month, setMonth] = useState(currentMonth());
+  const [plan, setPlan] = useState<MonthlyPlanView | null>(null);
+  const [status, setStatus] = useState<"loading" | "missing" | "ready">("loading");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  function updateExpense(index: number, field: "planned" | "actual", value: number) { setState((current) => ({ ...current, months: current.months.map((item, itemIndex) => itemIndex === selectedIndex ? { ...item, expenses: item.expenses.map((expense, expenseIndex) => expenseIndex === index ? { ...expense, [field]: value } : expense) } : item) })); setSaved(false); }
-  function save() { saveFinanceState(state); setSaved(true); }
-  function createNextMonth() { const date = new Date(`${month.month}-01`); date.setMonth(date.getMonth() + 1); const nextMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; const template = state.configuration.categoryTemplates.filter((item) => item.validFrom <= nextMonth).sort((a, b) => a.validFrom.localeCompare(b.validFrom)).at(-1); const expenses = (template?.entries ?? []).filter((entry) => entry.active).flatMap((entry) => { const category = state.configuration.categories.find((item) => item.id === entry.categoryId); return category?.active ? [{ categoryId: category.id, accountId: entry.accountId, planned: entry.expectedAmount, actual: 0 }] : []; }); setState((current) => ({ ...current, months: [...current.months, { month: nextMonth, expenses }] })); setSelectedIndex(state.months.length); setSaved(false); }
+  useEffect(() => {
+    void loadFinanceState(initialFinanceState).then(setState).catch(showFinanceStorageError);
+  }, []);
 
-  return <main className="shell"><AppNav active="month" /><section className="hero-row"><div><p className="eyebrow">Execução mensal</p><h1>{displayMonth(month.month)}</h1><p className="lede">Insere as despesas reais e consulta as transferências calculadas.</p></div><div className="month-controls"><button className="month-arrow" disabled={selectedIndex === 0} onClick={() => setSelectedIndex((index) => index - 1)}>‹</button><span className="month-current">{displayMonth(month.month)}</span><button className="month-arrow" disabled={selectedIndex === state.months.length - 1} onClick={() => setSelectedIndex((index) => index + 1)}>›</button><button className="new-month-button" onClick={createNextMonth}>+ Novo mês</button></div></section><section className="metrics-grid"><article className="metric-card metric-primary"><div className="metric-label"><span className="dot green" /> Rendimentos normais</div><strong><Money value={calculation.totalIncome} /></strong><span className="metric-note">{calculation.totalBonus ? <>+ <Money value={calculation.totalBonus} /> em subsídios</> : "valor aplicável ao mês"}</span></article><article className="metric-card"><div className="metric-label"><span className="dot orange" /> Despesas reais</div><strong><Money value={calculation.actualExpenses} /></strong><span className="metric-note">de <Money value={calculation.plannedExpenses} /> planeadas</span></article><article className="metric-card"><div className="metric-label"><span className="dot purple" /> Disponível para Goals</div><strong><Money value={calculation.availableForGoals} /></strong><span className="metric-note">normal + subsídios</span></article><article className="metric-card"><div className="metric-label"><span className="dot blue" /> Transferências</div><strong><Money value={calculation.totalTransferRequirement} /></strong><span className="metric-note">calculadas para a conjunta</span></article></section><section className="content-grid"><article className="panel expenses-panel"><div className="panel-heading"><div><p className="eyebrow">Inserir despesas</p><h2>Despesas por categoria e conta</h2></div><span className="panel-total"><Money value={calculation.actualExpenses} /></span></div><div className="expense-list">{month.expenses.map((expense, index) => <div className="expense-row editable-expense" key={`${expense.categoryId}-${expense.accountId}`}><span className="category-dot" /><span className="expense-name">{categoryName(expense.categoryId)}<small>{state.configuration.accounts.find((account) => account.id === expense.accountId)?.name}</small></span><label>esperado<input type="number" value={expense.planned} onChange={(event) => updateExpense(index, "planned", Number(event.target.value))} /></label><label>real<input type="number" value={expense.actual} onChange={(event) => updateExpense(index, "actual", Number(event.target.value))} /></label></div>)}</div><p className="form-note">Os valores reais são agregados manualmente no fim do mês.</p></article><article className="panel transfer-panel-inline"><div className="panel-heading"><div><p className="eyebrow">Resultado</p><h2>Transferências</h2></div><span className="panel-total"><Money value={calculation.totalTransferRequirement} /></span></div><div className="transfer-list">{calculation.transfers.map((transfer) => { const income = calculation.incomeByPerson.find((item) => item.personId === transfer.personId)?.amount ?? 0; const person = state.configuration.people.find((item) => item.id === transfer.personId); const share = calculation.totalIncome > 0 ? income / calculation.totalIncome : 0; const emergency = calculation.fixedExpenses * 1.1 * (person?.emergencyFundMonths ?? 0) * share; return <div className="transfer-row" key={transfer.personId}><span className="transfer-person">{personName(transfer.personId)}<small>Vencimento <Money value={income} /></small><small>Contribuição mínima <Money value={transfer.minimumAmount} /></small><small>Fundo de emergência <Money value={emergency} /></small></span><strong><Money value={transfer.amount} /></strong></div>; })}</div><p className="form-note">A distribuição é calculada, não inserida manualmente.</p></article></section><section className={`notice-panel ${calculation.unallocatedForGoals > 0 ? "warning-card" : ""}`}><strong>{calculation.unallocatedForGoals > 0 ? "⚠" : "✓"} Plano de Goals</strong><span><Money value={calculation.allocatedToGoals} /> planeados · <Money value={calculation.unallocatedForGoals} /> por alocar</span><Link className="text-button" href="/">Ver dashboard anual →</Link></section><div className="monthly-actions"><span>{saved ? "Mês guardado neste dispositivo." : "Guarda os valores depois de os inserir."}</span><button className="save-button" onClick={save}>{saved ? "Guardado" : "Guardar mês"}</button></div></main>;
+  useEffect(() => {
+    let active = true;
+    setStatus("loading");
+    setError("");
+    setDrafts({});
+    entitiesClient.getMonthlyPlan(month).then((loaded) => {
+      if (!active) return;
+      setPlan(loaded);
+      setStatus(loaded ? "ready" : "missing");
+    }).catch((cause) => {
+      if (!active) return;
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar o mês.");
+      setStatus("missing");
+    });
+    return () => { active = false; };
+  }, [month]);
+
+  async function createPlan() {
+    setError("");
+    setBusy(true);
+    try {
+      setPlan(await entitiesClient.createMonthlyPlan(month));
+      setStatus("ready");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível criar o mês.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Persiste o actual assim que o campo perde o foco (sem botão global de guardar).
+  async function saveActual(entry: MonthlyPlanEntryView) {
+    const raw = drafts[entry.id];
+    if (!plan || plan.closed || raw === undefined) return;
+    const value = Number(raw);
+    setDrafts((current) => { const next = { ...current }; delete next[entry.id]; return next; });
+    if (raw.trim() === "" || !Number.isFinite(value) || value < 0) {
+      setError("O valor actual deve ser um número não negativo.");
+      return;
+    }
+    if (value === entry.actual) return;
+    setError("");
+    try {
+      setPlan(await entitiesClient.updateMonthlyPlanActual(plan.id, entry.id, value));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível guardar o valor actual.");
+    }
+  }
+
+  async function closePlan() {
+    if (!plan || plan.closed) return;
+    if (!window.confirm(`Fechar ${displayMonth(month)}? Depois de fechado não pode ser alterado.`)) return;
+    setError("");
+    setBusy(true);
+    try {
+      setPlan(await entitiesClient.closeMonthlyPlan(plan.id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível fechar o mês.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const entries = plan?.entries ?? [];
+  const planned = totalPlanned(entries);
+  const actual = totalActual(entries.map((entry) => ({ actual: displayedActual(entry) })));
+  const contributions = plan
+    ? calculateMonthContributions({ month, entries, personIds: state.configuration.people.map((person) => person.id), incomes: state.configuration.personIncomes })
+    : null;
+
+  function displayedActual(entry: MonthlyPlanEntryView) {
+    const raw = drafts[entry.id];
+    if (raw === undefined) return entry.actual;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : entry.actual;
+  }
+
+  return (
+    <main className="shell compact-shell">
+      <AppNav active="month" />
+      <div className="page-heading">
+        <p className="eyebrow">Execução mensal</p>
+        <h1>{displayMonth(month)}</h1>
+        <p className="lede">Os valores planeados vêm do template aplicável e ficam fixos. Preenche os valores reais.</p>
+      </div>
+
+      <div className="month-controls">
+        <button className="month-arrow" onClick={() => setMonth((current) => shiftMonth(current, -1))} aria-label="Mês anterior">‹</button>
+        <span className="month-current">{displayMonth(month)}</span>
+        <button className="month-arrow" onClick={() => setMonth((current) => shiftMonth(current, 1))} aria-label="Mês seguinte">›</button>
+      </div>
+
+      {error && <p className="form-error" role="alert">{error}</p>}
+
+      {status === "loading" && <p className="form-note">A carregar o mês…</p>}
+
+      {status === "missing" && <section className="settings-section">
+        <p className="form-note">Este mês ainda não foi criado. Ao criar, copia-se o template aplicável a {displayMonth(month)}.</p>
+        <div className="editor-actions"><button className="save-button" onClick={() => void createPlan()} disabled={busy}>{busy ? "A criar…" : "Criar mês"}</button></div>
+      </section>}
+
+      {status === "ready" && plan && <>
+        {plan.closed && <p className="form-note">Mês fechado — apenas leitura.</p>}
+
+        <section className="category-totals">
+          <article className="panel"><p className="eyebrow">Total planeado</p><h2>{euro(planned)}</h2><p>Snapshot do template.</p></article>
+          <article className="panel"><p className="eyebrow">Total actual</p><h2>{euro(actual)}</h2><p>Valores reais introduzidos.</p></article>
+          <article className="panel"><p className="eyebrow">Diferença</p><h2>{euro(actual - planned)}</h2><p>Actual − planeado.</p></article>
+        </section>
+
+        <section className="settings-section">
+          <div className="section-title"><div><p className="eyebrow">Despesas</p><h2>Planeado e actual</h2></div></div>
+          <div className="category-table month-table">
+            <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Planeado</span><span>Actual</span><span>Diferença</span></div>
+            {entries.map((entry) => {
+              const value = displayedActual(entry);
+              return <div className="category-table-row" key={entry.id}>
+                <strong>{entry.categoryName}</strong>
+                <span>{entry.accountName}</span>
+                <span>{euro(entry.planned)}</span>
+                <span>
+                  <input type="number" min="0" step="0.01" aria-label={`Valor actual de ${entry.categoryName}`} disabled={plan.closed}
+                    value={drafts[entry.id] ?? entry.actual}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [entry.id]: event.target.value }))}
+                    onBlur={() => void saveActual(entry)} />
+                </span>
+                <span>{euro(value - entry.planned)}</span>
+              </div>;
+            })}
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <div className="section-title"><div><p className="eyebrow">Contribuições</p><h2>Quanto cada pessoa transfere</h2></div></div>
+          {contributions?.status === "no-income" && <p className="form-error" role="alert">{contributions.message}</p>}
+          {contributions?.status === "ok" && <>
+            <p className="form-note">Contribuição total necessária: {euro(contributions.contributionRequired)} (planeado + 10%).</p>
+            <div className="category-table month-contributions">
+              <div className="category-table-row category-table-header"><span>Pessoa</span><span>Contribuição</span><span>Já pago pela conta pessoal</span><span>A transferir</span></div>
+              {contributions.people.map((item) => <div className="category-table-row" key={item.personId}>
+                <strong>{state.configuration.people.find((person) => person.id === item.personId)?.name ?? "—"}</strong>
+                <span>{euro(item.contribution)}</span>
+                <span>{euro(item.personalActual)}</span>
+                <span>{euro(item.transferNeeded)}</span>
+              </div>)}
+            </div>
+          </>}
+        </section>
+
+        {!plan.closed && <div className="editor-actions"><button className="save-button" onClick={() => void closePlan()} disabled={busy}>{busy ? "A fechar…" : "Fechar mês"}</button></div>}
+      </>}
+    </main>
+  );
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { categoryTemplateRepository } from "@/shared/repositories/category-template-repository";
+import { monthlyPlanRepository } from "@/shared/repositories/monthly-plan-repository";
 import { checkEntryReferences, parseCategoryTemplateEntries } from "@/shared/lib/category-template-validation";
 import { isUuid } from "@/shared/lib/uuid";
 
@@ -30,6 +31,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
     if (!await categoryTemplateRepository.findById(id)) return NextResponse.json({ error: "Template não encontrado." }, { status: 404 });
+    if (await monthlyPlanRepository.hasClosedPlanForTemplate(id)) {
+      return NextResponse.json({ error: "Este template está protegido porque já existe um mês fechado que o utiliza. Cria uma nova versão para fazer alterações futuras." }, { status: 409 });
+    }
 
     const status = await categoryTemplateRepository.findReferenceStatus(parsed.entries.map((entry) => entry.categoryId), parsed.entries.map((entry) => entry.accountId));
     const existingPairs = await categoryTemplateRepository.findEntryPairs(id);
