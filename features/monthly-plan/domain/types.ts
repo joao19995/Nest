@@ -3,7 +3,6 @@ export type Person = {
   name: string;
   dailySpendingPercentage: number;
   contributionMinimum: number;
-  bonusMonths: number[];
   emergencyFundMonths: number;
 };
 
@@ -27,6 +26,7 @@ export type Account = {
   id: string;
   name: string;
   ownerPersonId: string | null;
+  active: boolean;
 };
 
 export type Category = {

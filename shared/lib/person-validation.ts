@@ -14,7 +14,6 @@ export function parsePersonInput(value: unknown): PersonInput | null {
     name,
     dailySpendingPercentage: input.dailySpendingPercentage,
     contributionMinimum: 0,
-    bonusMonths: [6, 12],
     emergencyFundMonths: input.emergencyFundMonths,
   };
 }

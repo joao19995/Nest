@@ -3,8 +3,8 @@ import { entitySeedIds } from "../../../shared/lib/entity-seed-ids";
 
 export const exampleConfiguration: FinancialConfiguration = {
   people: [
-    { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, contributionMinimum: 1000, bonusMonths: [6, 12], emergencyFundMonths: 6 },
-    { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, contributionMinimum: 800, bonusMonths: [6, 12], emergencyFundMonths: 6 },
+    { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, contributionMinimum: 1000, emergencyFundMonths: 6 },
+    { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, contributionMinimum: 800, emergencyFundMonths: 6 },
   ],
   personIncomes: [
     { id: entitySeedIds.personIncomes.joao202601, personId: entitySeedIds.people.joao, amount: 2500, validFrom: "2026-01-01" },
@@ -12,9 +12,9 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: entitySeedIds.personIncomes.natch202601, personId: entitySeedIds.people.natch, amount: 2000, validFrom: "2026-01-01" },
   ],
   accounts: [
-    { id: entitySeedIds.accounts.joao, name: "João", ownerPersonId: entitySeedIds.people.joao },
-    { id: entitySeedIds.accounts.natch, name: "Natch", ownerPersonId: entitySeedIds.people.natch },
-    { id: entitySeedIds.accounts.joint, name: "Conjunta", ownerPersonId: null },
+    { id: entitySeedIds.accounts.joao, name: "João", ownerPersonId: entitySeedIds.people.joao, active: true },
+    { id: entitySeedIds.accounts.natch, name: "Natch", ownerPersonId: entitySeedIds.people.natch, active: true },
+    { id: entitySeedIds.accounts.joint, name: "Conjunta", ownerPersonId: null, active: true },
   ],
   categories: [
     { id: entitySeedIds.categories.house, name: "Casa", type: "FIXED", active: true },

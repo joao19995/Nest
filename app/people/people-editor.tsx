@@ -15,7 +15,7 @@ type PersonIncomeDraft = { id?: string; amount: number; validFrom: string };
 type AccountDraft = { name: string; ownerPersonId: string | null };
 
 function defaultPersonDraft(name = ""): PersonDraft {
-  return { name, dailySpendingPercentage: 25, contributionMinimum: 0, bonusMonths: [6, 12], emergencyFundMonths: 6 };
+  return { name, dailySpendingPercentage: 25, contributionMinimum: 0, emergencyFundMonths: 6 };
 }
 
 function currentIncome(incomes: PersonIncome[], personId: string, month: string) {
@@ -108,12 +108,12 @@ export function PeopleEditor() {
     try {
       let person: Person;
       if (editingPersonId) {
-        person = await entitiesClient.updatePerson(editingPersonId, { ...personForm, bonusMonths: [6, 12] });
+        person = await entitiesClient.updatePerson(editingPersonId, personForm);
         setState((current) => ({ ...current, configuration: { ...current.configuration, people: current.configuration.people.map((item) => item.id === person.id ? person : item) } }));
       } else {
-        person = await entitiesClient.createPerson({ ...personForm, bonusMonths: [6, 12] });
+        person = await entitiesClient.createPerson(personForm);
         setEditingPersonId(person.id);
-        setPersonForm({ name: person.name, dailySpendingPercentage: person.dailySpendingPercentage, contributionMinimum: person.contributionMinimum, bonusMonths: person.bonusMonths, emergencyFundMonths: person.emergencyFundMonths });
+        setPersonForm({ name: person.name, dailySpendingPercentage: person.dailySpendingPercentage, contributionMinimum: person.contributionMinimum, emergencyFundMonths: person.emergencyFundMonths });
         setState((current) => ({ ...current, configuration: { ...current.configuration, people: [...current.configuration.people, person] } }));
       }
 
@@ -203,8 +203,14 @@ export function PeopleEditor() {
         <p className="lede">Salários, regras e contas do agregado familiar.</p>
       </div>
 
+      <section className="salary-summary">
+        <article className="panel"><p className="eyebrow">Excedente individual</p><h2><Money value={calculation.dailySpending} /></h2><p>Percentagem aplicada aos rendimentos normais.</p></article>
+        <article className="panel"><p className="eyebrow">Subsídios anuais</p><h2><Money value={annualSubsidies} /></h2><p>100% dos subsídios é destinado aos Goals.</p></article>
+        <article className="panel"><p className="eyebrow">Contribuição mensal</p><h2><Money value={calculation.totalTransferRequirement} /></h2><p>Mínimos e excedente para a conta conjunta.</p></article>
+        <article className="panel"><p className="eyebrow">Fundo de emergência</p><h2><Money value={calculation.emergencyFund} /></h2><p>Calculado a partir das configurações pessoais.</p></article>
+      </section>
+
       {error && <p className="form-error" role="alert">{error}</p>}
-      {legacyPendingIds.length > 0 && <p className="legacy-notice">Foram encontrados valores financeiros antigos guardados neste dispositivo. Revê-os e guarda cada pessoa para os persistir no PostgreSQL.</p>}
 
       <section className="settings-section">
         <div className="section-title people-section-title"><div><p className="eyebrow">Pessoas</p><h2>Gerir pessoas</h2></div><button className="secondary-button" onClick={openCreatePerson} disabled={loading}>+ Nova pessoa</button></div>
@@ -288,12 +294,6 @@ export function PeopleEditor() {
         </section>
       </div>}
 
-      <section className="salary-summary">
-        <article className="panel"><p className="eyebrow">Excedente individual</p><h2><Money value={calculation.dailySpending} /></h2><p>Percentagem aplicada aos rendimentos normais.</p></article>
-        <article className="panel"><p className="eyebrow">Subsídios anuais</p><h2><Money value={annualSubsidies} /></h2><p>100% dos subsídios é destinado aos Goals.</p></article>
-        <article className="panel"><p className="eyebrow">Contribuição mensal</p><h2><Money value={calculation.totalTransferRequirement} /></h2><p>Mínimos e excedente para a conta conjunta.</p></article>
-        <article className="panel"><p className="eyebrow">Fundo de emergência</p><h2><Money value={calculation.emergencyFund} /></h2><p>Calculado a partir das configurações pessoais.</p></article>
-      </section>
     </main>
   );
 }

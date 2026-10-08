@@ -4,7 +4,7 @@ import { entitiesClient } from "@/shared/lib/entities-client";
 
 const STORAGE_KEY = "our-finances-state";
 type LegacyStoredCategory = { id: string; accountId?: unknown };
-type LegacyIncome = { personId: string; periods: { amount: number; validFrom: string }[]; bonusMonths?: number[] };
+type LegacyIncome = { personId: string; periods: { amount: number; validFrom: string }[] };
 type LegacyContributionRule = { personId: string; minimumAmount: number };
 type LegacyConfiguration = Partial<FinancialConfiguration> & {
   categories?: LegacyStoredCategory[];
@@ -17,7 +17,6 @@ type LegacyConfiguration = Partial<FinancialConfiguration> & {
 export type LegacyPersonFinance = {
   dailySpendingPercentage?: number;
   contributionMinimum?: number;
-  bonusMonths?: number[];
   emergencyFundMonths?: number;
   incomes: Pick<PersonIncome, "amount" | "validFrom">[];
 };
@@ -54,7 +53,6 @@ export function loadLegacyPersonFinanceData(): LegacyPersonFinanceData | null {
   for (const person of oldPeople) ensurePerson(person.id);
   for (const income of legacy.incomes ?? []) {
     const finance = ensurePerson(income.personId);
-    finance.bonusMonths = income.bonusMonths ?? [];
     finance.incomes = income.periods.map((period) => ({
       amount: period.amount,
       validFrom: period.validFrom.length === 7 ? `${period.validFrom}-01` : period.validFrom,
@@ -158,7 +156,6 @@ export async function loadFinanceState(fallback: FinanceState): Promise<FinanceS
       ...person,
       dailySpendingPercentage: local.dailySpendingPercentage ?? person.dailySpendingPercentage,
       contributionMinimum: local.contributionMinimum ?? person.contributionMinimum,
-      bonusMonths: [6, 12],
       emergencyFundMonths: local.emergencyFundMonths ?? person.emergencyFundMonths,
     } : person);
 
@@ -182,10 +179,7 @@ export async function loadFinanceState(fallback: FinanceState): Promise<FinanceS
 function isDefaultPersonFinance(person: Person) {
   return person.dailySpendingPercentage === 25
     && person.contributionMinimum === 0
-    && person.emergencyFundMonths === 6
-    && person.bonusMonths.length === 2
-    && person.bonusMonths[0] === 6
-    && person.bonusMonths[1] === 12;
+    && person.emergencyFundMonths === 6;
 }
 
 function readLegacyPersonFields() {

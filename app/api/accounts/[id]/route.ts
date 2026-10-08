@@ -33,8 +33,9 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   try {
     const { id } = await context.params;
     if (!isUuid(id)) return NextResponse.json({ error: "ID inválido." }, { status: 400 });
-    const deleted = await accountRepository.delete(id);
-    if (!deleted) return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
+    // Soft delete: a conta é desativada (active = false), nunca removida fisicamente.
+    const deactivated = await accountRepository.deactivate(id);
+    if (!deactivated) return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
     return NextResponse.json({ id });
   } catch (error) {
     console.error("Could not delete account.", error);
