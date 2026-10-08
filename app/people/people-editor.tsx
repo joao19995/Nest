@@ -15,7 +15,7 @@ type PersonIncomeDraft = { id?: string; amount: number; validFrom: string };
 type AccountDraft = { name: string; ownerPersonId: string | null };
 
 function defaultPersonDraft(name = ""): PersonDraft {
-  return { name, dailySpendingPercentage: 25, contributionMinimum: 0, emergencyFundMonths: 6 };
+  return { name, dailySpendingPercentage: 25, emergencyFundMonths: 6 };
 }
 
 function currentIncome(incomes: PersonIncome[], personId: string, month: string) {
@@ -113,7 +113,7 @@ export function PeopleEditor() {
       } else {
         person = await entitiesClient.createPerson(personForm);
         setEditingPersonId(person.id);
-        setPersonForm({ name: person.name, dailySpendingPercentage: person.dailySpendingPercentage, contributionMinimum: person.contributionMinimum, emergencyFundMonths: person.emergencyFundMonths });
+        setPersonForm({ name: person.name, dailySpendingPercentage: person.dailySpendingPercentage, emergencyFundMonths: person.emergencyFundMonths });
         setState((current) => ({ ...current, configuration: { ...current.configuration, people: [...current.configuration.people, person] } }));
       }
 

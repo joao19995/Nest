@@ -3,8 +3,8 @@ import { entitySeedIds } from "../../../shared/lib/entity-seed-ids";
 
 export const exampleConfiguration: FinancialConfiguration = {
   people: [
-    { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, contributionMinimum: 1000, emergencyFundMonths: 6 },
-    { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, contributionMinimum: 800, emergencyFundMonths: 6 },
+    { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, emergencyFundMonths: 6 },
+    { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, emergencyFundMonths: 6 },
   ],
   personIncomes: [
     { id: entitySeedIds.personIncomes.joao202601, personId: entitySeedIds.people.joao, amount: 2500, validFrom: "2026-01-01" },
@@ -22,7 +22,7 @@ export const exampleConfiguration: FinancialConfiguration = {
     { id: entitySeedIds.categories.dog, name: "Cão", type: "VARIABLE", active: true },
     { id: entitySeedIds.categories.extras, name: "Extras", type: "VARIABLE", active: true },
   ],
-  categoryTemplates: [{ validFrom: "2026-01", entries: [
+  categoryTemplates: [{ id: "7d1f3c2e-5a4b-4e8f-9c61-2b7a9d0e4f11", validFrom: "2026-01", entries: [
     { categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, expectedAmount: 1000, active: true },
     { categoryId: entitySeedIds.categories.car, accountId: entitySeedIds.accounts.joint, expectedAmount: 100, active: true },
     { categoryId: entitySeedIds.categories.dog, accountId: entitySeedIds.accounts.joint, expectedAmount: 80, active: true },

@@ -2,7 +2,6 @@ export type Person = {
   id: string;
   name: string;
   dailySpendingPercentage: number;
-  contributionMinimum: number;
   emergencyFundMonths: number;
 };
 
@@ -37,7 +36,8 @@ export type Category = {
 };
 
 export type CategoryTemplate = {
-  validFrom: string;
+  id: string;
+  validFrom: string; // YYYY-MM, primeiro mês em que o template entra em vigor
   entries: CategoryTemplateEntry[];
 };
 
@@ -47,6 +47,17 @@ export type CategoryTemplateEntry = {
   expectedAmount: number;
   active: boolean;
 };
+
+// Vista da API: inclui nome e estado de categoria/conta para mostrar entradas históricas (mesmo inativas).
+export type CategoryTemplateEntryView = CategoryTemplateEntry & {
+  categoryName: string;
+  categoryType: Category["type"];
+  categoryActive: boolean;
+  accountName: string;
+  accountActive: boolean;
+};
+
+export type CategoryTemplateView = Omit<CategoryTemplate, "entries"> & { entries: CategoryTemplateEntryView[] };
 
 export type Expense = {
   categoryId: string;
@@ -98,6 +109,8 @@ export type MonthlyCalculation = {
   surplus: number;
   emergencyFund: number;
   totalJointExpenses: number;
+  templateExpectedTotal: number;
+  contributionRequired: number;
   totalTransferRequirement: number;
   transfers: TransferCalculation[];
   surplusAfterTransfers: number;

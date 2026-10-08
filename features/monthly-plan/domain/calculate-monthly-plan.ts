@@ -45,9 +45,12 @@ export function calculateMonthlyPlan(configuration: FinancialConfiguration, annu
   const totalBonus = bonusesByPerson.reduce((total, bonus) => total + bonus.amount, 0);
   const plannedExpenses = month.expenses.reduce((total, expense) => total + expense.planned, 0);
   const actualExpenses = month.expenses.reduce((total, expense) => total + expense.actual, 0);
+  const template = applicableCategoryTemplate(configuration, month.month);
   const fixedExpenses = month.expenses.length
     ? month.expenses.filter((expense) => configuration.categories.find((category) => category.id === expense.categoryId)?.type === "FIXED").reduce((total, expense) => total + expense.planned, 0)
-    : (applicableCategoryTemplate(configuration, month.month)?.entries ?? []).filter((entry) => entry.active && configuration.categories.find((category) => category.id === entry.categoryId)?.active && configuration.categories.find((category) => category.id === entry.categoryId)?.type === "FIXED").reduce((total, entry) => total + entry.expectedAmount, 0);
+    : (template?.entries ?? []).filter((entry) => entry.active && configuration.categories.find((category) => category.id === entry.categoryId)?.active && configuration.categories.find((category) => category.id === entry.categoryId)?.type === "FIXED").reduce((total, entry) => total + entry.expectedAmount, 0);
+  const templateExpectedTotal = (template?.entries ?? []).filter((entry) => entry.active).reduce((total, entry) => total + entry.expectedAmount, 0);
+  const contributionRequired = templateExpectedTotal * 1.1;
   const dailySpending = incomeByPerson.reduce((total, income) => {
     const person = configuration.people.find((item) => item.id === income.personId);
     return total + income.amount * (person?.dailySpendingPercentage ?? 0) / 100;
@@ -63,7 +66,7 @@ export function calculateMonthlyPlan(configuration: FinancialConfiguration, annu
   const minimumTransfers = configuration.people.map((person) => {
     const personIncome = incomeByPerson.find((income) => income.personId === person.id)?.amount ?? 0;
     const share = totalIncome > 0 ? personIncome / totalIncome : 0;
-    return { personId: person.id, minimumAmount: fixedExpenses * share, accountId: jointAccount?.id ?? "" };
+    return { personId: person.id, minimumAmount: contributionRequired * share, accountId: jointAccount?.id ?? "" };
   });
   const totalMinimum = minimumTransfers.reduce((total, transfer) => total + transfer.minimumAmount, 0);
   const totalTransferRequirement = Math.max(jointExpenses, totalMinimum);
@@ -78,5 +81,5 @@ export function calculateMonthlyPlan(configuration: FinancialConfiguration, annu
   const goalAllocations = annualPlan.allocations.filter((allocation) => allocation.month === month.month);
   const allocatedToGoals = goalAllocations.reduce((total, allocation) => total + allocation.amount, 0);
 
-  return { incomeByPerson, totalIncome, bonusesByPerson, totalBonus, plannedExpenses, actualExpenses, fixedExpenses, dailySpending, surplus, emergencyFund, totalJointExpenses: jointExpenses, totalTransferRequirement, transfers, surplusAfterTransfers, availableForGoals, goalAllocations, allocatedToGoals, unallocatedForGoals: Math.max(availableForGoals - allocatedToGoals, 0) };
+  return { incomeByPerson, totalIncome, bonusesByPerson, totalBonus, plannedExpenses, actualExpenses, fixedExpenses, dailySpending, surplus, emergencyFund, totalJointExpenses: jointExpenses, templateExpectedTotal, contributionRequired, totalTransferRequirement, transfers, surplusAfterTransfers, availableForGoals, goalAllocations, allocatedToGoals, unallocatedForGoals: Math.max(availableForGoals - allocatedToGoals, 0) };
 }

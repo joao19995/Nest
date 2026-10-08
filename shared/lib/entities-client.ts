@@ -1,4 +1,4 @@
-import type { Account, Category, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
+import type { Account, Category, CategoryTemplate, CategoryTemplateEntry, CategoryTemplateView, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -23,6 +23,11 @@ export const entitiesClient = {
   createAccount: (name: string, ownerPersonId: string | null) => request<Account>("/api/accounts", { method: "POST", body: JSON.stringify({ name, ownerPersonId }) }),
   updateAccount: (id: string, name: string, ownerPersonId: string | null) => request<Account>(`/api/accounts/${id}`, { method: "PUT", body: JSON.stringify({ name, ownerPersonId }) }),
   deleteAccount: (id: string) => request<{ id: string }>(`/api/accounts/${id}`, { method: "DELETE" }),
+
+  getCategoryTemplates: () => request<CategoryTemplateView[]>("/api/category-templates", { cache: "no-store" }),
+  getApplicableCategoryTemplate: (month: string) => request<CategoryTemplateView | null>(`/api/category-templates?applicableTo=${month}`, { cache: "no-store" }),
+  createCategoryTemplate: (input: { validFrom: string; entries: CategoryTemplateEntry[] }) => request<CategoryTemplateView>("/api/category-templates", { method: "POST", body: JSON.stringify(input) }),
+  updateCategoryTemplate: (id: string, entries: CategoryTemplateEntry[]) => request<CategoryTemplateView>(`/api/category-templates/${id}`, { method: "PUT", body: JSON.stringify({ entries }) }),
 
   getCategories: () => request<Category[]>("/api/categories", { cache: "no-store" }),
   createCategory: (name: string, type: Category["type"]) => request<Category>("/api/categories", { method: "POST", body: JSON.stringify({ name, type }) }),

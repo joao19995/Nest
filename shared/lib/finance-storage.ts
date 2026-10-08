@@ -1,4 +1,4 @@
-import type { CategoryTemplateEntry, FinanceState, FinancialConfiguration, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
+import type { CategoryTemplate, CategoryTemplateEntry, FinanceState, FinancialConfiguration, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
 import { entitySeedIds, legacyAccountIds, legacyCategoryIds, legacyPersonIds } from "@/shared/lib/entity-seed-ids";
 import { entitiesClient } from "@/shared/lib/entities-client";
 
@@ -16,7 +16,6 @@ type LegacyConfiguration = Partial<FinancialConfiguration> & {
 
 export type LegacyPersonFinance = {
   dailySpendingPercentage?: number;
-  contributionMinimum?: number;
   emergencyFundMonths?: number;
   incomes: Pick<PersonIncome, "amount" | "validFrom">[];
 };
@@ -58,7 +57,6 @@ export function loadLegacyPersonFinanceData(): LegacyPersonFinanceData | null {
       validFrom: period.validFrom.length === 7 ? `${period.validFrom}-01` : period.validFrom,
     }));
   }
-  for (const rule of legacy.contributionRules ?? []) ensurePerson(rule.personId).contributionMinimum = rule.minimumAmount;
 
   if (legacy.dailySpendingPercentage !== undefined) {
     for (const finance of Object.values(byPersonId)) finance.dailySpendingPercentage = legacy.dailySpendingPercentage;
@@ -136,9 +134,59 @@ function loadLocalFinanceState(fallback: FinanceState): FinanceState {
   return stored ? migrateLocalFinanceState(stored, fallback) : fallback;
 }
 
+function storedLocalCategoryTemplates(): CategoryTemplate[] {
+  const configuration = parseStoredState()?.configuration as { categoryTemplates?: CategoryTemplate[] } | undefined;
+  return configuration?.categoryTemplates ?? [];
+}
+
+function writeLocalCategoryTemplates(remaining: CategoryTemplate[]) {
+  const stored = parseStoredState();
+  if (!stored?.configuration) return;
+  const configuration = { ...stored.configuration } as Record<string, unknown>;
+  if (remaining.length) configuration.categoryTemplates = remaining;
+  else delete configuration.categoryTemplates;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, configuration }));
+}
+
+// Importa uma única vez os templates antigos guardados no localStorage para o PostgreSQL.
+// Um template cujo validFrom já exista na BD é descartado (a versão da BD prevalece).
+// Templates que falhem a validação ficam no localStorage para revisão manual.
+async function importLegacyCategoryTemplates(existing: CategoryTemplate[]) {
+  const localTemplates = storedLocalCategoryTemplates();
+  if (!localTemplates.length) return;
+
+  const remaining: CategoryTemplate[] = [];
+  for (const template of localTemplates) {
+    if (existing.some((item) => item.validFrom === template.validFrom)) {
+      console.warn(`Local category template ${template.validFrom} already exists in PostgreSQL; local copy discarded.`);
+      continue;
+    }
+    try {
+      await entitiesClient.createCategoryTemplate({
+        validFrom: template.validFrom,
+        entries: template.entries.map((entry) => ({
+          categoryId: legacyCategoryIds[entry.categoryId] ?? entry.categoryId,
+          accountId: legacyAccountIds[entry.accountId] ?? entry.accountId,
+          expectedAmount: entry.expectedAmount,
+          active: entry.active,
+        })),
+      });
+    } catch (cause) {
+      console.error(`Could not import local category template ${template.validFrom}.`, cause);
+      remaining.push(template);
+    }
+  }
+  writeLocalCategoryTemplates(remaining);
+}
+
 export async function loadFinanceState(fallback: FinanceState): Promise<FinanceState> {
   const localState = loadLocalFinanceState(fallback);
   const legacy = loadLegacyPersonFinanceData();
+  let categoryTemplates = await entitiesClient.getCategoryTemplates();
+  if (storedLocalCategoryTemplates().length) {
+    await importLegacyCategoryTemplates(categoryTemplates);
+    categoryTemplates = await entitiesClient.getCategoryTemplates();
+  }
   const [people, accounts, categories] = await Promise.all([
     entitiesClient.getPeople(),
     entitiesClient.getAccounts(),
@@ -155,7 +203,6 @@ export async function loadFinanceState(fallback: FinanceState): Promise<FinanceS
     hydratedPeople.push(useLegacySettings ? {
       ...person,
       dailySpendingPercentage: local.dailySpendingPercentage ?? person.dailySpendingPercentage,
-      contributionMinimum: local.contributionMinimum ?? person.contributionMinimum,
       emergencyFundMonths: local.emergencyFundMonths ?? person.emergencyFundMonths,
     } : person);
 
@@ -172,13 +219,12 @@ export async function loadFinanceState(fallback: FinanceState): Promise<FinanceS
 
   return {
     ...localState,
-    configuration: { ...localState.configuration, people: hydratedPeople, personIncomes, accounts, categories },
+    configuration: { ...localState.configuration, people: hydratedPeople, personIncomes, accounts, categories, categoryTemplates },
   };
 }
 
 function isDefaultPersonFinance(person: Person) {
   return person.dailySpendingPercentage === 25
-    && person.contributionMinimum === 0
     && person.emergencyFundMonths === 6;
 }
 
@@ -190,11 +236,13 @@ function readLegacyPersonFields() {
     "dailySpendingPercentage",
     "emergencyFundMonths",
     "contributionRules",
+    "categoryTemplates",
   ].filter((key) => key in configuration).map((key) => [key, (configuration as Record<string, unknown>)[key]]));
 }
 
 export function saveFinanceState(state: FinanceState) {
-  const { people: _people, personIncomes: _personIncomes, accounts: _accounts, categories: _categories, ...localConfiguration } = state.configuration;
+  const { people: _people, personIncomes: _personIncomes, accounts: _accounts, categories: _categories, categoryTemplates: _categoryTemplates, ...localConfiguration } = state.configuration;
+  // categoryTemplates persistem na BD; só se mantêm no localStorage os valores legados ainda por importar.
   const legacyFields = readLegacyPersonFields();
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, configuration: { ...legacyFields, ...localConfiguration } }));
 }

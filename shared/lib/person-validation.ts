@@ -13,7 +13,6 @@ export function parsePersonInput(value: unknown): PersonInput | null {
   return {
     name,
     dailySpendingPercentage: input.dailySpendingPercentage,
-    contributionMinimum: 0,
     emergencyFundMonths: input.emergencyFundMonths,
   };
 }
