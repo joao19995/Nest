@@ -14,6 +14,11 @@ export const entitySeedIds = {
     dog: "e4f97dc8-ddb9-41f7-9c8a-187a2c419f51",
     extras: "f6d5b176-304b-4256-97fa-ce6a45e9191f",
   },
+  personIncomes: {
+    joao202601: "4ba21d39-2bd3-43f4-a8b6-8077e7a9fa10",
+    joao202605: "7af0fba6-58e5-4d63-bdf1-54aa27e39481",
+    natch202601: "c5b82b85-cb3d-46c4-bb81-e11d7f66c9f4",
+  },
 } as const;
 
 export const legacyPersonIds: Record<string, string> = {

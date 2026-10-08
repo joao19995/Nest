@@ -1,34 +1,26 @@
 export type Person = {
   id: string;
   name: string;
-};
-
-export type IncomePeriod = {
-  amount: number;
-  validFrom: string; // YYYY-MM
-};
-
-export type Income = {
-  personId: string;
-  periods: IncomePeriod[];
+  dailySpendingPercentage: number;
+  contributionMinimum: number;
   bonusMonths: number[];
+  emergencyFundMonths: number;
+};
+
+export type PersonIncome = {
+  id: string;
+  personId: string;
+  amount: number;
+  validFrom: string; // YYYY-MM-DD
 };
 
 export type FinancialConfiguration = {
   people: Person[];
-  incomes: Income[];
-  dailySpendingPercentage: number;
-  emergencyFundMonths: number;
-  contributionRules: MonthlyContributionRule[];
+  personIncomes: PersonIncome[];
   accounts: Account[];
   categories: Category[];
   categoryTemplates: CategoryTemplate[];
   goals: Goal[];
-};
-
-export type MonthlyContributionRule = {
-  personId: string;
-  minimumAmount: number;
 };
 
 export type Account = {

@@ -3,18 +3,13 @@ import { entitySeedIds } from "../../../shared/lib/entity-seed-ids";
 
 export const exampleConfiguration: FinancialConfiguration = {
   people: [
-    { id: entitySeedIds.people.joao, name: "João" },
-    { id: entitySeedIds.people.natch, name: "Natch" },
+    { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, contributionMinimum: 1000, bonusMonths: [6, 12], emergencyFundMonths: 6 },
+    { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, contributionMinimum: 800, bonusMonths: [6, 12], emergencyFundMonths: 6 },
   ],
-  incomes: [
-    { personId: entitySeedIds.people.joao, periods: [{ amount: 2500, validFrom: "2026-01" }, { amount: 2680, validFrom: "2026-05" }], bonusMonths: [6, 12] },
-    { personId: entitySeedIds.people.natch, periods: [{ amount: 2000, validFrom: "2026-01" }], bonusMonths: [6, 12] },
-  ],
-  dailySpendingPercentage: 25,
-  emergencyFundMonths: 6,
-  contributionRules: [
-    { personId: entitySeedIds.people.joao, minimumAmount: 1000 },
-    { personId: entitySeedIds.people.natch, minimumAmount: 800 },
+  personIncomes: [
+    { id: entitySeedIds.personIncomes.joao202601, personId: entitySeedIds.people.joao, amount: 2500, validFrom: "2026-01-01" },
+    { id: entitySeedIds.personIncomes.joao202605, personId: entitySeedIds.people.joao, amount: 2680, validFrom: "2026-05-01" },
+    { id: entitySeedIds.personIncomes.natch202601, personId: entitySeedIds.people.natch, amount: 2000, validFrom: "2026-01-01" },
   ],
   accounts: [
     { id: entitySeedIds.accounts.joao, name: "João", ownerPersonId: entitySeedIds.people.joao },

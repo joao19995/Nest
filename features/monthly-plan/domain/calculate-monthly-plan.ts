@@ -1,9 +1,12 @@
 import type { AnnualGoalPlan, FinancialConfiguration, GoalMonthlyAllocation, MonthlyCalculation, MonthlyPlan } from "./types";
 
+const FIXED_BONUS_MONTHS = [6, 12];
+
 function applicableIncome(configuration: FinancialConfiguration, personId: string, month: string) {
-  const income = configuration.incomes.find((item) => item.personId === personId);
-  if (!income) return 0;
-  return income.periods.filter((period) => period.validFrom <= month).sort((a, b) => a.validFrom.localeCompare(b.validFrom)).at(-1)?.amount ?? 0;
+  return configuration.personIncomes
+    .filter((income) => income.personId === personId && income.validFrom.slice(0, 7) <= month)
+    .sort((a, b) => a.validFrom.localeCompare(b.validFrom))
+    .at(-1)?.amount ?? 0;
 }
 
 function quarterForMonth(month: string) {
@@ -38,19 +41,30 @@ export function calculateMonthlyPlan(configuration: FinancialConfiguration, annu
   const incomeByPerson = configuration.people.map((person) => ({ personId: person.id, amount: applicableIncome(configuration, person.id, month.month) }));
   const totalIncome = incomeByPerson.reduce((total, income) => total + income.amount, 0);
   const monthNumber = Number(month.month.slice(5, 7));
-  const bonusesByPerson = configuration.incomes.map((income) => ({ personId: income.personId, amount: income.bonusMonths.includes(monthNumber) ? applicableIncome(configuration, income.personId, month.month) : 0 }));
+  const bonusesByPerson = configuration.people.map((person) => ({ personId: person.id, amount: FIXED_BONUS_MONTHS.includes(monthNumber) ? applicableIncome(configuration, person.id, month.month) : 0 }));
   const totalBonus = bonusesByPerson.reduce((total, bonus) => total + bonus.amount, 0);
   const plannedExpenses = month.expenses.reduce((total, expense) => total + expense.planned, 0);
   const actualExpenses = month.expenses.reduce((total, expense) => total + expense.actual, 0);
   const fixedExpenses = month.expenses.length
     ? month.expenses.filter((expense) => configuration.categories.find((category) => category.id === expense.categoryId)?.type === "FIXED").reduce((total, expense) => total + expense.planned, 0)
     : (applicableCategoryTemplate(configuration, month.month)?.entries ?? []).filter((entry) => entry.active && configuration.categories.find((category) => category.id === entry.categoryId)?.active && configuration.categories.find((category) => category.id === entry.categoryId)?.type === "FIXED").reduce((total, entry) => total + entry.expectedAmount, 0);
-  const dailySpending = totalIncome * configuration.dailySpendingPercentage / 100;
+  const dailySpending = incomeByPerson.reduce((total, income) => {
+    const person = configuration.people.find((item) => item.id === income.personId);
+    return total + income.amount * (person?.dailySpendingPercentage ?? 0) / 100;
+  }, 0);
   const surplus = totalIncome - fixedExpenses - dailySpending;
-  const emergencyFund = fixedExpenses * 1.1 * configuration.emergencyFundMonths;
+  const emergencyFund = incomeByPerson.reduce((total, income) => {
+    const person = configuration.people.find((item) => item.id === income.personId);
+    const share = totalIncome > 0 ? income.amount / totalIncome : 0;
+    return total + fixedExpenses * 1.1 * (person?.emergencyFundMonths ?? 0) * share;
+  }, 0);
   const jointAccount = configuration.accounts.find((account) => account.name === "Conjunta");
   const jointExpenses = month.expenses.filter((expense) => expense.accountId === jointAccount?.id).reduce((total, expense) => total + expense.actual, 0);
-  const minimumTransfers = configuration.people.map((person) => ({ personId: person.id, minimumAmount: configuration.contributionRules.find((rule) => rule.personId === person.id)?.minimumAmount ?? 0, accountId: jointAccount?.id ?? "" }));
+  const minimumTransfers = configuration.people.map((person) => {
+    const personIncome = incomeByPerson.find((income) => income.personId === person.id)?.amount ?? 0;
+    const share = totalIncome > 0 ? personIncome / totalIncome : 0;
+    return { personId: person.id, minimumAmount: fixedExpenses * share, accountId: jointAccount?.id ?? "" };
+  });
   const totalMinimum = minimumTransfers.reduce((total, transfer) => total + transfer.minimumAmount, 0);
   const totalTransferRequirement = Math.max(jointExpenses, totalMinimum);
   const excess = Math.max(jointExpenses - totalMinimum, 0);

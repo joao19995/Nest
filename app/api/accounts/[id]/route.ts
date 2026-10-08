@@ -28,3 +28,16 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     return NextResponse.json({ error: "Não foi possível atualizar a conta." }, { status: 500 });
   }
 }
+
+export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await context.params;
+    if (!isUuid(id)) return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+    const deleted = await accountRepository.delete(id);
+    if (!deleted) return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
+    return NextResponse.json({ id });
+  } catch (error) {
+    console.error("Could not delete account.", error);
+    return NextResponse.json({ error: "Não foi possível remover a conta." }, { status: 500 });
+  }
+}

@@ -20,27 +20,29 @@ describe("calculateMonthlyPlan", () => {
 
     expect(result.emergencyFund).toBe(6600);
     expect(result.dailySpending).toBe(1170);
-    expect(result.surplusAfterTransfers).toBe(710);
+    expect(result.surplusAfterTransfers).toBe(1510);
     expect(result.goalAllocations).toEqual([]);
-    expect(result.availableForGoals).toBe(710);
-    expect(result.unallocatedForGoals).toBe(710);
+    expect(result.availableForGoals).toBe(1510);
+    expect(result.unallocatedForGoals).toBe(1510);
 
     const nextMonth = { ...exampleMonth, month: "2026-11" };
     const nextResult = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, nextMonth);
     expect(nextResult.goalAllocations).toEqual([]);
-    expect(suggestGoalAllocations(exampleConfiguration, exampleMonth.month, result.availableForGoals)).toEqual([{ month: "2026-10", goalId: "brazil", amount: 710 }]);
+    expect(suggestGoalAllocations(exampleConfiguration, exampleMonth.month, result.availableForGoals)).toEqual([{ month: "2026-10", goalId: "brazil", amount: 1510 }]);
   });
 
   it("calculates transfers from the minimum and joint actual expenses", () => {
     const result = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, exampleMonth);
-    expect(result.transfers).toEqual([
-      { personId: entitySeedIds.people.joao, minimumAmount: 1000, amount: 1000, accountId: entitySeedIds.accounts.joint, status: "calculated" },
-      { personId: entitySeedIds.people.natch, minimumAmount: 800, amount: 800, accountId: entitySeedIds.accounts.joint, status: "calculated" },
-    ]);
+    expect(result.transfers[0]).toMatchObject({ personId: entitySeedIds.people.joao, accountId: entitySeedIds.accounts.joint, status: "calculated" });
+    expect(result.transfers[0].minimumAmount).toBeCloseTo(1000 * 2680 / 4680);
+    expect(result.transfers[0].amount).toBeCloseTo(result.transfers[0].minimumAmount);
+    expect(result.transfers[1].minimumAmount).toBeCloseTo(1000 * 2000 / 4680);
+    expect(result.transfers[1].amount).toBeCloseTo(result.transfers[1].minimumAmount);
+    expect(result.transfers[0].minimumAmount).not.toBe(exampleConfiguration.people[0].contributionMinimum);
 
     const highJointExpenses = { ...exampleMonth, expenses: [{ categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, planned: 1300, actual: 1300 }] };
     expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, highJointExpenses).totalJointExpenses).toBe(1300);
-    expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, highJointExpenses).totalTransferRequirement).toBe(1800);
+    expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, highJointExpenses).totalTransferRequirement).toBe(1300);
     expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, highJointExpenses).transfers.every((transfer) => transfer.status === "calculated")).toBe(true);
 
     const expensesAboveMinimum = { ...exampleMonth, expenses: [{ categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, planned: 2000, actual: 2000 }] };
@@ -65,6 +67,6 @@ describe("calculateMonthlyPlan", () => {
 
     expect(result.goalAllocations).toEqual(annualPlan.allocations);
     expect(result.allocatedToGoals).toBe(500);
-    expect(result.unallocatedForGoals).toBe(210);
+    expect(result.unallocatedForGoals).toBe(1010);
   });
 });

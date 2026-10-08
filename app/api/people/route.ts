@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { personRepository } from "@/shared/repositories/person-repository";
+import { parsePersonInput } from "@/shared/lib/person-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +16,10 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { name?: unknown };
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name || name.length > 100) return NextResponse.json({ error: "Indica um nome válido (1–100 caracteres)." }, { status: 400 });
+    const person = parsePersonInput(await request.json());
+    if (!person) return NextResponse.json({ error: "Indica nome e uma configuração financeira válida." }, { status: 400 });
 
-    return NextResponse.json(await personRepository.create({ name }), { status: 201 });
+    return NextResponse.json(await personRepository.create(person), { status: 201 });
   } catch (error) {
     console.error("Could not create person.", error);
     return NextResponse.json({ error: "Não foi possível criar a pessoa." }, { status: 500 });

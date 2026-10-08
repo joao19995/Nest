@@ -33,6 +33,12 @@ export class AccountRepository {
     const [row] = await sql<AccountRow[]>`UPDATE account SET name = ${input.name}, owner_person_id = ${input.ownerPersonId} WHERE id = ${id} RETURNING id, name, owner_person_id`;
     return row ? toAccount(row) : null;
   }
+
+  async delete(id: string): Promise<boolean> {
+    const sql = getPostgres();
+    const rows = await sql<{ id: string }[]>`DELETE FROM account WHERE id = ${id} RETURNING id`;
+    return rows.length > 0;
+  }
 }
 
 export const accountRepository = new AccountRepository();
