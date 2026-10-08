@@ -8,8 +8,8 @@ import { AppNav } from "@/shared/ui/app-nav";
 import { Money } from "@/shared/ui/money";
 import type { Account, Category, CategoryTemplateEntry, CategoryTemplateView, FinanceState } from "@/features/monthly-plan/domain/types";
 
-type TemplateDraft = { expectedAmount: number; active: boolean; accountId: string };
 type CategoryForm = { name: string; type: Category["type"] };
+type TemplateRow = { categoryId: string; accountId: string; expectedAmount: number };
 
 const editIcon = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>;
 const removeIcon = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>;
@@ -22,16 +22,8 @@ function applicableTemplate(templates: CategoryTemplateView[], month: string): C
   return templates.filter((template) => template.validFrom <= month).sort((a, b) => a.validFrom.localeCompare(b.validFrom)).at(-1) ?? null;
 }
 
-function buildDrafts(categories: Category[], accounts: Account[], base: CategoryTemplateView | null): Record<string, TemplateDraft> {
-  const fallbackAccountId = accounts.find((account) => account.name === "Conjunta")?.id ?? accounts[0]?.id ?? "";
-  return Object.fromEntries(categories.filter((category) => category.active).map((category) => {
-    const entry = base?.entries.find((item) => item.categoryId === category.id);
-    return [category.id, {
-      expectedAmount: entry?.expectedAmount ?? 0,
-      active: entry?.active ?? false,
-      accountId: entry?.accountId ?? fallbackAccountId,
-    }];
-  }));
+function defaultAccountId(accounts: Account[]) {
+  return accounts.find((account) => account.name === "Conjunta")?.id ?? accounts[0]?.id ?? "";
 }
 
 function currentMonth() {
@@ -42,7 +34,8 @@ export function CategoriesEditor() {
   const [state, setState] = useState<FinanceState>(initialFinanceState);
   const [templates, setTemplates] = useState<CategoryTemplateView[]>([]);
   const [templateDate, setTemplateDate] = useState(currentMonth());
-  const [drafts, setDrafts] = useState<Record<string, TemplateDraft>>({});
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateRows, setTemplateRows] = useState<TemplateRow[]>([]);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateError, setTemplateError] = useState("");
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
@@ -50,18 +43,15 @@ export function CategoriesEditor() {
   const [categoryForm, setCategoryForm] = useState<CategoryForm>({ name: "", type: "VARIABLE" });
   const [savingCategory, setSavingCategory] = useState(false);
   const [categoryFormError, setCategoryFormError] = useState("");
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
     void Promise.all([loadFinanceState(initialFinanceState), entitiesClient.getCategoryTemplates()]).then(([loaded, loadedTemplates]) => {
       if (!active) return;
-      const latest = loadedTemplates.at(-1)?.validFrom ?? currentMonth();
       setState(loaded);
       setTemplates(loadedTemplates);
-      setTemplateDate(latest);
-      setDrafts(buildDrafts(loaded.configuration.categories, loaded.configuration.accounts, applicableTemplate(loadedTemplates, latest)));
+      setTemplateDate(loadedTemplates.at(-1)?.validFrom ?? currentMonth());
     }).catch(showFinanceStorageError);
     return () => { active = false; };
   }, []);
@@ -75,59 +65,81 @@ export function CategoriesEditor() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [categoryModalOpen, savingCategory]);
 
+  useEffect(() => {
+    if (!templateModalOpen || templateSaving) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setTemplateModalOpen(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [templateModalOpen, templateSaving]);
+
   const selectableCategories = state.configuration.categories.filter((category) => category.active);
+  const base = applicableTemplate(templates, templateDate);
   const existingTemplate = templates.find((template) => template.validFrom === templateDate) ?? null;
   const isNewVersion = existingTemplate === null;
-  const base = applicableTemplate(templates, templateDate);
-  // Entradas de categorias inativas só se mantêm ao editar uma versão existente (são histórico, não novas opções).
-  const historicalEntries = isNewVersion ? [] : (base?.entries.filter((entry) => !entry.categoryActive) ?? []);
 
-  const totalRows = [
-    ...selectableCategories.filter((category) => drafts[category.id]?.active).map((category) => ({ type: category.type, amount: drafts[category.id].expectedAmount })),
-    ...historicalEntries.filter((entry) => entry.active).map((entry) => ({ type: entry.categoryType, amount: entry.expectedAmount })),
-  ];
-  const expectedTotal = totalRows.reduce((sum, row) => sum + row.amount, 0);
-  const fixedTotal = totalRows.filter((row) => row.type === "FIXED").reduce((sum, row) => sum + row.amount, 0);
+  // O painel mostra só o que está ativo no template aplicável ao mês escolhido.
+  const visibleEntries = (base?.entries ?? []).filter((entry) => entry.active);
+  const expectedTotal = visibleEntries.reduce((sum, entry) => sum + entry.expectedAmount, 0);
+  const fixedTotal = visibleEntries.filter((entry) => entry.categoryType === "FIXED").reduce((sum, entry) => sum + entry.expectedAmount, 0);
   const variableTotal = expectedTotal - fixedTotal;
 
-  // Contas: as ativas, mais as inativas que já existam nesta versão (nunca substituídas silenciosamente).
-  const accountOptions = [
-    ...state.configuration.accounts.map((account) => ({ id: account.id, label: account.name })),
-    ...(base?.entries ?? []).filter((entry) => !entry.accountActive && !state.configuration.accounts.some((account) => account.id === entry.accountId))
-      .filter((entry, index, all) => all.findIndex((item) => item.accountId === entry.accountId) === index)
-      .map((entry) => ({ id: entry.accountId, label: `${entry.accountName} (inativa)` })),
-  ];
-
-  function changeTemplateDraft(id: string, changes: Partial<TemplateDraft>) {
-    setDrafts((current) => ({ ...current, [id]: { ...current[id], ...changes } }));
-    setSaved(false);
+  // Contas e categorias conhecidas, incluindo as inativas que já estejam no template (histórico).
+  const allTemplateEntries = templates.flatMap((template) => template.entries);
+  function accountLabel(accountId: string) {
+    const account = state.configuration.accounts.find((item) => item.id === accountId);
+    if (account) return account.name;
+    const historical = allTemplateEntries.find((entry) => entry.accountId === accountId);
+    return historical ? `${historical.accountName} (inativa)` : "Conta inativa";
+  }
+  function categoryLabel(categoryId: string) {
+    const category = state.configuration.categories.find((item) => item.id === categoryId);
+    if (!category) return "Categoria";
+    return category.active ? category.name : `${category.name} (inativa)`;
   }
 
-  function selectTemplateMonth(month: string) {
-    setTemplateDate(month);
+  function openTemplateModal() {
     setTemplateError("");
-    setSaved(false);
-    if (MONTH_PATTERN.test(month)) setDrafts(buildDrafts(state.configuration.categories, state.configuration.accounts, applicableTemplate(templates, month)));
+    setTemplateRows((base?.entries ?? []).filter((entry) => entry.active).map((entry) => ({
+      categoryId: entry.categoryId,
+      accountId: entry.accountId,
+      expectedAmount: entry.expectedAmount,
+    })));
+    setTemplateModalOpen(true);
+  }
+
+  function updateTemplateRow(index: number, changes: Partial<TemplateRow>) {
+    setTemplateRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...changes } : row));
+  }
+
+  function addTemplateRow() {
+    const used = new Set(templateRows.map((row) => row.categoryId));
+    const next = selectableCategories.find((category) => !used.has(category.id));
+    if (!next) return;
+    setTemplateRows((current) => [...current, { categoryId: next.id, accountId: defaultAccountId(state.configuration.accounts), expectedAmount: 0 }]);
+  }
+
+  function removeTemplateRow(index: number) {
+    setTemplateRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
   }
 
   async function saveTemplate() {
     setTemplateError("");
     setTemplateSaving(true);
-    const entries: CategoryTemplateEntry[] = [
-      ...selectableCategories.map((category) => ({
-        categoryId: category.id,
-        accountId: drafts[category.id]?.accountId ?? "",
-        expectedAmount: drafts[category.id]?.expectedAmount ?? 0,
-        active: drafts[category.id]?.active ?? false,
-      })),
-      ...historicalEntries.map((entry) => ({ categoryId: entry.categoryId, accountId: entry.accountId, expectedAmount: entry.expectedAmount, active: entry.active })),
-    ];
+    const entries: CategoryTemplateEntry[] = templateRows.map((row) => ({
+      categoryId: row.categoryId,
+      accountId: row.accountId,
+      expectedAmount: row.expectedAmount,
+      active: true,
+    }));
     try {
+      // Linhas removidas ficam active = false na versão existente (histórico preservado).
       const result = existingTemplate
         ? await entitiesClient.updateCategoryTemplate(existingTemplate.id, entries)
         : await entitiesClient.createCategoryTemplate({ validFrom: templateDate, entries });
       setTemplates((current) => [...current.filter((template) => template.id !== result.id), result].sort((a, b) => a.validFrom.localeCompare(b.validFrom)));
-      setSaved(true);
+      setTemplateModalOpen(false);
     } catch (cause) {
       setTemplateError(cause instanceof Error ? cause.message : "Não foi possível guardar o template.");
     } finally {
@@ -160,8 +172,6 @@ export function CategoriesEditor() {
       } else {
         const category = await entitiesClient.createCategory(categoryForm.name, categoryForm.type);
         setState((prev) => ({ ...prev, configuration: { ...prev.configuration, categories: [...prev.configuration.categories, category] } }));
-        const defaultAccountId = state.configuration.accounts.find((account) => account.name === "Conjunta")?.id ?? state.configuration.accounts[0]?.id ?? "";
-        setDrafts((current) => ({ ...current, [category.id]: { expectedAmount: 0, active: true, accountId: defaultAccountId } }));
       }
       setCategoryModalOpen(false);
     } catch (cause) {
@@ -191,6 +201,11 @@ export function CategoriesEditor() {
       setError(cause instanceof Error ? cause.message : "Não foi possível desativar a categoria.");
     }
   }
+
+  const usedCategoryIds = new Set(templateRows.map((row) => row.categoryId));
+  const canAddTemplateRow = selectableCategories.some((category) => !usedCategoryIds.has(category.id));
+  const templateAccountIds = [...state.configuration.accounts.map((account) => account.id), ...templateRows.map((row) => row.accountId)]
+    .filter((accountId, index, all) => all.indexOf(accountId) === index);
 
   return (
     <main className="shell compact-shell">
@@ -229,39 +244,63 @@ export function CategoriesEditor() {
       </div>}
 
       <section className="category-totals">
-        <article className="panel"><p className="eyebrow">Template ativo + margem</p><h2><Money value={expectedTotal * 1.1} /></h2><p>{totalRows.length} entradas ativas com 10%.</p></article>
+        <article className="panel"><p className="eyebrow">Template ativo + margem</p><h2><Money value={expectedTotal * 1.1} /></h2><p>{visibleEntries.length} entradas ativas com 10%.</p></article>
         <article className="panel"><p className="eyebrow">Despesas fixas</p><h2><Money value={fixedTotal} /></h2><p>Categorias do tipo Fixa.</p></article>
         <article className="panel"><p className="eyebrow">Despesas variáveis</p><h2><Money value={variableTotal} /></h2><p>Categorias do tipo Variável.</p></article>
       </section>
 
       <section className="settings-section">
-        <div className="section-title"><div><p className="eyebrow">Template</p><h2>Template mensal</h2></div><label className="template-date">Aplicável a partir de <input type="month" value={templateDate} onChange={(event) => selectTemplateMonth(event.target.value)} /></label></div>
+        <div className="section-title">
+          <div><p className="eyebrow">Template</p><h2>Template mensal</h2></div>
+          <div className="entity-action-buttons">
+            <label className="template-date">Aplicável a partir de <input type="month" value={templateDate} onChange={(event) => { if (MONTH_PATTERN.test(event.target.value)) setTemplateDate(event.target.value); }} /></label>
+            <button className="entity-edit-button" type="button" title="Criar ou editar template" aria-label="Criar ou editar template" onClick={openTemplateModal}>{editIcon}</button>
+          </div>
+        </div>
         <p className="form-note">
           {isNewVersion
-            ? `Não existe template com início em ${templateDate}. Ao guardar, cria-se uma nova versão; o template anterior mantém-se para histórico.`
-            : `A editar o template com início em ${templateDate}. A conta pertence ao template, não à categoria.`}
+            ? `Sem template próprio a partir de ${templateDate}: a mostrar o template anterior. Ao editar, cria-se uma nova versão.`
+            : `Template a partir de ${templateDate}. A conta pertence ao template, não à categoria.`}
         </p>
-        {templateError && <p className="form-error" role="alert">{templateError}</p>}
         <div className="category-table category-template">
-          <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Valor esperado</span><span>Usar no template</span></div>
-          {selectableCategories.map((category) => {
-            const draft = drafts[category.id] ?? { expectedAmount: 0, active: false, accountId: "" };
-            return <div className="category-table-row" key={category.id}>
-              <strong>{category.name}<small>{category.type === "FIXED" ? "Fixa" : "Variável"}</small></strong>
-              <select aria-label={`Conta do template para ${category.name}`} value={draft.accountId} onChange={(event) => changeTemplateDraft(category.id, { accountId: event.target.value })}>{accountOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select>
-              <label><input type="number" min="0" value={draft.expectedAmount} onChange={(event) => changeTemplateDraft(category.id, { expectedAmount: Number(event.target.value) })} /></label>
-              <label className="active-toggle"><input type="checkbox" checked={draft.active} onChange={(event) => changeTemplateDraft(category.id, { active: event.target.checked })} /><span>{draft.active ? "Sim" : "Não"}</span></label>
-            </div>;
-          })}
-          {historicalEntries.map((entry) => <div className="category-table-row" key={`historical-${entry.categoryId}`}>
-            <strong>{entry.categoryName}<small>Categoria inativa · histórico</small></strong>
+          <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Valor esperado</span><span>Tipo</span></div>
+          {visibleEntries.map((entry) => <div className="category-table-row" key={entry.categoryId}>
+            <strong>{entry.categoryName}{!entry.categoryActive && <small>Categoria inativa · histórico</small>}</strong>
             <span>{entry.accountName}{entry.accountActive ? "" : " (inativa)"}</span>
             <span><Money value={entry.expectedAmount} /></span>
-            <span>{entry.active ? "Sim" : "Não"}</span>
+            <span>{entry.categoryType === "FIXED" ? "Fixa" : "Variável"}</span>
           </div>)}
+          {!visibleEntries.length && <p className="form-note">Este template não tem categorias ativas.</p>}
         </div>
-        <div className="editor-actions template-actions"><button className="save-button" onClick={() => void saveTemplate()} disabled={templateSaving || !MONTH_PATTERN.test(templateDate)}>{templateSaving ? "A guardar…" : saved ? "Guardado" : "Guardar template"}</button></div>
       </section>
+
+      {templateModalOpen && <div className="entity-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !templateSaving) setTemplateModalOpen(false); }}>
+        <section className="entity-modal template-modal" role="dialog" aria-modal="true" aria-labelledby="template-modal-title">
+          <div className="entity-modal-heading"><div><p className="eyebrow">Template mensal</p><h2 id="template-modal-title">{isNewVersion ? "Novo template" : "Editar template"}</h2></div><button className="entity-modal-close" type="button" aria-label="Fechar" onClick={() => setTemplateModalOpen(false)} disabled={templateSaving}>×</button></div>
+          <p className="form-note">{isNewVersion ? `Nova versão a partir de ${templateDate}. O template anterior mantém-se para histórico.` : `Template a partir de ${templateDate}.`}</p>
+          <form onSubmit={(event) => { event.preventDefault(); void saveTemplate(); }}>
+            <div className="template-entry-list">
+              {templateRows.length === 0 && <p className="form-note">Sem categorias neste template. Adiciona a primeira.</p>}
+              {templateRows.map((row, index) => {
+                const rowOtherIds = new Set(templateRows.filter((_, rowIndex) => rowIndex !== index).map((item) => item.categoryId));
+                const categoryOptions = state.configuration.categories.filter((category) => (category.active && !rowOtherIds.has(category.id)) || category.id === row.categoryId);
+                const accountOptions = templateAccountIds;
+                return <div className="template-entry-row" key={`${row.categoryId}-${index}`}>
+                  <select aria-label="Categoria" value={row.categoryId} onChange={(event) => updateTemplateRow(index, { categoryId: event.target.value })}>{categoryOptions.map((category) => <option value={category.id} key={category.id}>{categoryLabel(category.id)}</option>)}</select>
+                  <select aria-label="Conta" value={row.accountId} onChange={(event) => updateTemplateRow(index, { accountId: event.target.value })}>{accountOptions.map((accountId) => <option value={accountId} key={accountId}>{accountLabel(accountId)}</option>)}</select>
+                  <input type="number" min="0" aria-label="Valor esperado" value={row.expectedAmount} onChange={(event) => updateTemplateRow(index, { expectedAmount: Number(event.target.value) })} />
+                  <button className="entity-edit-button entity-remove-button" type="button" title="Remover do template" aria-label={`Remover ${categoryLabel(row.categoryId)} do template`} onClick={() => removeTemplateRow(index)}>{removeIcon}</button>
+                </div>;
+              })}
+            </div>
+            <div className="entity-action-buttons" style={{ marginTop: 14 }}>
+              <button className="secondary-button" type="button" onClick={addTemplateRow} disabled={!canAddTemplateRow}>+ Adicionar categoria</button>
+            </div>
+            {templateError && <p className="form-error" role="alert">{templateError}</p>}
+            <div className="entity-modal-actions"><button className="secondary-button" type="button" onClick={() => setTemplateModalOpen(false)} disabled={templateSaving}>Cancelar</button><button className="save-button" type="submit" disabled={templateSaving}>{templateSaving ? "A guardar…" : "Guardar template"}</button></div>
+          </form>
+        </section>
+      </div>}
     </main>
   );
 }

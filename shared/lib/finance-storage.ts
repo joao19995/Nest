@@ -89,14 +89,6 @@ function migrateLocalFinanceState(value: unknown, fallback: FinanceState): Finan
     contributionRules: _contributionRules,
     ...localConfiguration
   } = configuration;
-  const legacyCategories = (configuration as unknown as { categories?: LegacyStoredCategory[] }).categories ?? [];
-  const legacyCategoryAccounts = new Map(legacyCategories.map((category) => {
-    const categoryId = legacyCategoryIds[category.id] ?? category.id;
-    const oldAccountId = category["accountId"];
-    const accountId = typeof oldAccountId === "string" ? legacyAccountIds[oldAccountId] ?? oldAccountId : entitySeedIds.accounts.joint;
-    return [categoryId, accountId] as const;
-  }));
-
   return {
     configuration: {
       ...fallback.configuration,
@@ -105,17 +97,8 @@ function migrateLocalFinanceState(value: unknown, fallback: FinanceState): Finan
       personIncomes: fallback.configuration.personIncomes,
       accounts: fallback.configuration.accounts,
       categories: fallback.configuration.categories,
-      categoryTemplates: (configuration.categoryTemplates?.length ? configuration.categoryTemplates : fallback.configuration.categoryTemplates).map((template) => ({
-        ...template,
-        entries: template.entries.map((entry) => {
-          const legacyEntry = entry as CategoryTemplateEntry & { accountId?: string };
-          const categoryId = legacyCategoryIds[entry.categoryId] ?? entry.categoryId;
-          const accountId = legacyEntry.accountId
-            ? legacyAccountIds[legacyEntry.accountId] ?? legacyEntry.accountId
-            : legacyCategoryAccounts.get(categoryId) ?? entitySeedIds.accounts.joint;
-          return { ...entry, categoryId, accountId };
-        }),
-      })),
+      // Templates vêm sempre da BD (loadFinanceState); não são lidos do localStorage.
+      categoryTemplates: fallback.configuration.categoryTemplates,
     },
     annualPlans: parsed.annualPlans?.length ? parsed.annualPlans.map((plan) => ({ ...plan, allocations: plan.allocations ?? [] })) : fallback.annualPlans,
     months: (parsed.months?.length ? parsed.months : fallback.months).map((month) => ({
@@ -134,59 +117,11 @@ function loadLocalFinanceState(fallback: FinanceState): FinanceState {
   return stored ? migrateLocalFinanceState(stored, fallback) : fallback;
 }
 
-function storedLocalCategoryTemplates(): CategoryTemplate[] {
-  const configuration = parseStoredState()?.configuration as { categoryTemplates?: CategoryTemplate[] } | undefined;
-  return configuration?.categoryTemplates ?? [];
-}
-
-function writeLocalCategoryTemplates(remaining: CategoryTemplate[]) {
-  const stored = parseStoredState();
-  if (!stored?.configuration) return;
-  const configuration = { ...stored.configuration } as Record<string, unknown>;
-  if (remaining.length) configuration.categoryTemplates = remaining;
-  else delete configuration.categoryTemplates;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, configuration }));
-}
-
-// Importa uma única vez os templates antigos guardados no localStorage para o PostgreSQL.
-// Um template cujo validFrom já exista na BD é descartado (a versão da BD prevalece).
-// Templates que falhem a validação ficam no localStorage para revisão manual.
-async function importLegacyCategoryTemplates(existing: CategoryTemplate[]) {
-  const localTemplates = storedLocalCategoryTemplates();
-  if (!localTemplates.length) return;
-
-  const remaining: CategoryTemplate[] = [];
-  for (const template of localTemplates) {
-    if (existing.some((item) => item.validFrom === template.validFrom)) {
-      console.warn(`Local category template ${template.validFrom} already exists in PostgreSQL; local copy discarded.`);
-      continue;
-    }
-    try {
-      await entitiesClient.createCategoryTemplate({
-        validFrom: template.validFrom,
-        entries: template.entries.map((entry) => ({
-          categoryId: legacyCategoryIds[entry.categoryId] ?? entry.categoryId,
-          accountId: legacyAccountIds[entry.accountId] ?? entry.accountId,
-          expectedAmount: entry.expectedAmount,
-          active: entry.active,
-        })),
-      });
-    } catch (cause) {
-      console.error(`Could not import local category template ${template.validFrom}.`, cause);
-      remaining.push(template);
-    }
-  }
-  writeLocalCategoryTemplates(remaining);
-}
-
+// Os templates de categorias vivem apenas no PostgreSQL. O localStorage não é lido nem escrito para eles.
 export async function loadFinanceState(fallback: FinanceState): Promise<FinanceState> {
   const localState = loadLocalFinanceState(fallback);
   const legacy = loadLegacyPersonFinanceData();
-  let categoryTemplates = await entitiesClient.getCategoryTemplates();
-  if (storedLocalCategoryTemplates().length) {
-    await importLegacyCategoryTemplates(categoryTemplates);
-    categoryTemplates = await entitiesClient.getCategoryTemplates();
-  }
+  const categoryTemplates = await entitiesClient.getCategoryTemplates();
   const [people, accounts, categories] = await Promise.all([
     entitiesClient.getPeople(),
     entitiesClient.getAccounts(),
@@ -242,7 +177,7 @@ function readLegacyPersonFields() {
 
 export function saveFinanceState(state: FinanceState) {
   const { people: _people, personIncomes: _personIncomes, accounts: _accounts, categories: _categories, categoryTemplates: _categoryTemplates, ...localConfiguration } = state.configuration;
-  // categoryTemplates persistem na BD; só se mantêm no localStorage os valores legados ainda por importar.
+  // categoryTemplates persistem apenas na BD. Cópias antigas no localStorage ficam intactas, sem serem usadas.
   const legacyFields = readLegacyPersonFields();
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, configuration: { ...legacyFields, ...localConfiguration } }));
 }
