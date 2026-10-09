@@ -1,4 +1,8 @@
 import type { Account, Category, CategoryTemplate, CategoryTemplateEntry, CategoryTemplateView, MonthlyPlanView, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
+import type { Goal } from "@/features/goals/domain/types";
+import type { GoalTemplate, GoalTemplateEntry } from "@/features/goals/domain/goal-template";
+import type { MonthFunding, YearFunding } from "@/shared/lib/goal-funding";
+import type { GoalPlanView } from "@/shared/repositories/goal-plan-repository";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -50,4 +54,27 @@ export const entitiesClient = {
   createCategory: (name: string, type: Category["type"]) => request<Category>("/api/categories", { method: "POST", body: JSON.stringify({ name, type }) }),
   updateCategory: (id: string, name: string, type: Category["type"], active: boolean) => request<Category>(`/api/categories/${id}`, { method: "PUT", body: JSON.stringify({ name, type, active }) }),
   deactivateCategory: (id: string) => request<Category>(`/api/categories/${id}`, { method: "DELETE" }),
+
+  getGoals: () => request<Goal[]>("/api/goals", { cache: "no-store" }),
+  createGoal: (input: { name: string }) =>
+    request<Goal>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
+  renameGoal: (id: string, name: string) => request<Goal>(`/api/goals/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
+  deleteGoal: (id: string) => request<{ id: string }>(`/api/goals/${id}`, { method: "DELETE" }),
+
+  getGoalPlan: (month: string) => requestOrNull<GoalPlanView>(`/api/goal-plan?month=${encodeURIComponent(month)}`, { cache: "no-store" }),
+  getClosedGoalPlanned: () => request<{ month: string; goalId: string; planned: number }[]>("/api/goal-plan/closed", { cache: "no-store" }),
+  getGoalsFundingByYear: (year: number) => request<YearFunding>(`/api/goals-funding?year=${year}`, { cache: "no-store" }),
+  getGoalsFundingByMonth: (month: string) => request<MonthFunding>(`/api/goals-funding?month=${encodeURIComponent(month)}`, { cache: "no-store" }),
+  createGoalPlan: (month: string) => request<GoalPlanView>("/api/goal-plan", { method: "POST", body: JSON.stringify({ month }) }),
+  refreshGoalPlan: (planId: string) => request<GoalPlanView>(`/api/goal-plan/${planId}/refresh`, { method: "POST" }),
+  updateGoalAllocation: (planId: string, goalId: string, input: { planned?: number; actual?: number }) =>
+    request<GoalPlanView>(`/api/goal-plan/${planId}/allocations/${goalId}`, { method: "PATCH", body: JSON.stringify(input) }),
+  closeGoalPlan: (planId: string) => request<GoalPlanView>(`/api/goal-plan/${planId}/close`, { method: "POST" }),
+
+  getGoalTemplates: () => request<GoalTemplate[]>("/api/goal-templates", { cache: "no-store" }),
+  getApplicableGoalTemplate: (month: string) => request<GoalTemplate | null>(`/api/goal-templates?applicableTo=${month}`, { cache: "no-store" }),
+  createGoalTemplate: (input: { validFrom: string; annualTotal: number; entries: GoalTemplateEntry[] }) =>
+    request<GoalTemplate>("/api/goal-templates", { method: "POST", body: JSON.stringify(input) }),
+  updateGoalTemplate: (id: string, input: { annualTotal: number; entries: GoalTemplateEntry[] }) =>
+    request<GoalTemplate>(`/api/goal-templates/${id}`, { method: "PUT", body: JSON.stringify(input) }),
 };
