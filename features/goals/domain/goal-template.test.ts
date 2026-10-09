@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { annualAmountsFor, isValidTemplateTotal, suggestMonthlyFromTemplate, totalPercentage } from "./goal-template";
+import { isValidTemplateTotal, resolveApplicableGoalTemplate, resolveApplicableGoalTemplateId, totalPercentage } from "./goal-template";
 
 describe("goal-template", () => {
   it("exige que a tabela some 100%", () => {
@@ -8,26 +8,20 @@ describe("goal-template", () => {
     expect(totalPercentage([{ percentage: 50 }, { percentage: 50 }])).toBeCloseTo(100);
   });
 
-  it("deriva o montante anual da percentagem", () => {
-    expect(annualAmountsFor(12000, [
-      { goalId: "a", percentage: 25, priority: "HIGH", deadlineMonth: null },
-      { goalId: "b", percentage: 75, priority: "LOW", deadlineMonth: null },
-    ])).toEqual([
-      { goalId: "a", amount: 3000 },
-      { goalId: "b", amount: 9000 },
-    ]);
+  it("tolera pequenos arredondamentos no total", () => {
+    expect(isValidTemplateTotal([{ percentage: 33.33 }, { percentage: 33.33 }, { percentage: 33.34 }])).toBe(true);
+    expect(isValidTemplateTotal([{ percentage: 50 }, { percentage: 49.9 }])).toBe(false);
   });
 
-  it("distribui o disponível do mês pelas percentagens e ignora prazos vencidos", () => {
-    const result = suggestMonthlyFromTemplate({
-      availableAmount: 1505,
-      entries: [
-        { goalId: "brasil", percentage: 60, priority: "HIGH", deadlineMonth: null },
-        { goalId: "velho", percentage: 40, priority: "LOW", deadlineMonth: "2026-01" },
-      ],
-      month: "2026-03",
-    });
-    expect(result.suggestions).toEqual([{ goalId: "brasil", planned: 903 }]);
-    expect(result.undistributed).toBeCloseTo(602);
+  it("resolve a versao aplicavel pelo mes de inicio", () => {
+    const templates = [
+      { id: "jan", validFrom: "2026-01" },
+      { id: "jul", validFrom: "2026-07" },
+    ];
+    expect(resolveApplicableGoalTemplateId(templates, "2026-03")).toBe("jan");
+    expect(resolveApplicableGoalTemplateId(templates, "2026-07")).toBe("jul");
+    expect(resolveApplicableGoalTemplateId(templates, "2026-12")).toBe("jul");
+    expect(resolveApplicableGoalTemplateId(templates, "2025-12")).toBeNull();
+    expect(resolveApplicableGoalTemplate(templates, "2026-05")).toEqual({ id: "jan", validFrom: "2026-01" });
   });
 });

@@ -4,14 +4,19 @@ import type { GoalTemplate, GoalTemplateEntry } from "@/features/goals/domain/go
 
 type TemplateRow = { id: string; valid_from: string; annual_total: number | string };
 
-type EntryRow = { template_id: string; goal_id: string; percentage: number | string; priority: string; deadline_month: string | null };
+// As colunas priority e deadline_month continuam na base de dados por
+// compatibilidade historica, mas ja nao fazem parte da configuracao: a
+// alocacao usa apenas goalId + percentage. As escritas usam valores neutros.
+type EntryRow = { template_id: string; goal_id: string; percentage: number | string };
 
 function toTemplate(row: TemplateRow, entries: EntryRow[]): GoalTemplate {
   return {
     id: row.id,
     validFrom: row.valid_from,
     annualTotal: Number(row.annual_total),
-    entries: entries.filter((entry) => entry.template_id === row.id).map((entry) => ({ goalId: entry.goal_id, percentage: Number(entry.percentage), priority: entry.priority as GoalTemplateEntry["priority"], deadlineMonth: entry.deadline_month })),
+    entries: entries
+      .filter((entry) => entry.template_id === row.id)
+      .map((entry) => ({ goalId: entry.goal_id, percentage: Number(entry.percentage) })),
   };
 }
 
@@ -20,7 +25,7 @@ export class GoalTemplateRepository {
     if (!templates.length) return [];
     const sql = getPostgres();
     const ids = templates.map((template) => template.id);
-    const rows = await sql<EntryRow[]>`SELECT template_id, goal_id, percentage, priority, deadline_month FROM goal_template_entry WHERE template_id IN ${sql(ids)}`;
+    const rows = await sql<EntryRow[]>`SELECT template_id, goal_id, percentage FROM goal_template_entry WHERE template_id IN ${sql(ids)}`;
     return templates.map((template) => toTemplate(template, rows));
   }
 
@@ -56,7 +61,7 @@ export class GoalTemplateRepository {
       for (const entry of entries) {
         await transaction`
           INSERT INTO goal_template_entry (id, template_id, goal_id, percentage, priority, deadline_month)
-          VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage}, ${entry.priority}, ${entry.deadlineMonth})
+          VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage}, 'MEDIUM', NULL)
         `;
       }
     });
@@ -72,9 +77,9 @@ export class GoalTemplateRepository {
       for (const entry of entries) {
         await transaction`
           INSERT INTO goal_template_entry (id, template_id, goal_id, percentage, priority, deadline_month)
-          VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage}, ${entry.priority}, ${entry.deadlineMonth})
+          VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage}, 'MEDIUM', NULL)
           ON CONFLICT (template_id, goal_id)
-          DO UPDATE SET percentage = EXCLUDED.percentage, priority = EXCLUDED.priority, deadline_month = EXCLUDED.deadline_month
+          DO UPDATE SET percentage = EXCLUDED.percentage
         `;
       }
       const goalIds = entries.map((entry) => entry.goalId);

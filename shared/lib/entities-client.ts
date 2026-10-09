@@ -62,6 +62,19 @@ export const entitiesClient = {
   deleteGoal: (id: string) => request<{ id: string }>(`/api/goals/${id}`, { method: "DELETE" }),
 
   getGoalPlan: (month: string) => requestOrNull<GoalPlanView>(`/api/goal-plan?month=${encodeURIComponent(month)}`, { cache: "no-store" }),
+  getGoalYear: (year: number) => request<{ plans: GoalPlanView[]; funding: YearFunding }>(`/api/goal-plan?year=${year}`, { cache: "no-store" }),
+  previewGoalAdjust: (month: string, allocations: { goalId: string; planned: number }[]) =>
+    request<{ preview: true; month: string; availableAmount: number; newAllocations: { goalId: string; planned: number }[]; futureChanges: { month: string; availableAmount: number; before: { goalId: string; planned: number }[]; after: { goalId: string; planned: number }[] }[]; missingMonths: string[] }>(
+      "/api/goal-plan/adjust",
+      { method: "POST", body: JSON.stringify({ month, allocations, dryRun: true }) },
+    ),
+  applyGoalAdjust: (month: string, allocations: { goalId: string; planned: number }[]) =>
+    request<{ preview: false; plans: GoalPlanView[]; futureChanges: unknown[]; missingMonths: string[] }>(
+      "/api/goal-plan/adjust",
+      { method: "POST", body: JSON.stringify({ month, allocations, dryRun: false }) },
+    ),
+  recalcGoalYear: (year: number) =>
+    request<{ plans: GoalPlanView[]; funding: YearFunding; missingMonths: string[] }>("/api/goal-plan/recalc-year", { method: "POST", body: JSON.stringify({ year }) }),
   getClosedGoalPlanned: () => request<{ month: string; goalId: string; planned: number }[]>("/api/goal-plan/closed", { cache: "no-store" }),
   getGoalsFundingByYear: (year: number) => request<YearFunding>(`/api/goals-funding?year=${year}`, { cache: "no-store" }),
   getGoalsFundingByMonth: (month: string) => request<MonthFunding>(`/api/goals-funding?month=${encodeURIComponent(month)}`, { cache: "no-store" }),

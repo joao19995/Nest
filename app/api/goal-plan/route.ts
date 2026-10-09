@@ -1,14 +1,25 @@
 import { NextResponse } from "next/server";
 import { goalPlanRepository } from "@/shared/repositories/goal-plan-repository";
 import { isValidMonth } from "@/shared/lib/category-template-validation";
-import { getMonthFunding } from "@/shared/lib/goal-funding";
+import { getMonthFunding, getYearFunding } from "@/shared/lib/goal-funding";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const month = new URL(request.url).searchParams.get("month");
+    const params = new URL(request.url).searchParams;
+    const year = params.get("year");
+    if (year !== null) {
+      if (!/^\d{4}$/.test(year)) return NextResponse.json({ error: "Indica um ano válido (YYYY)." }, { status: 400 });
+      const numericYear = Number(year);
+      const [plans, funding] = await Promise.all([
+        goalPlanRepository.listByYear(numericYear),
+        getYearFunding(numericYear),
+      ]);
+      return NextResponse.json({ plans, funding });
+    }
+    const month = params.get("month");
     if (!isValidMonth(month)) return NextResponse.json({ error: "Indica um mês válido (YYYY-MM)." }, { status: 400 });
     const plan = await goalPlanRepository.findByMonth(month);
     if (!plan) return NextResponse.json({ error: "Este mês ainda não foi criado." }, { status: 404 });

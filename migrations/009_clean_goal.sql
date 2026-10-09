@@ -1,10 +1,11 @@
--- A tabela goal passa a ter so o nome. Orcamento prioridade e prazo vivem na tabela anual.
--- Coisa nova: limpa dados de teste existentes em vez de migrar silenciosamente.
-DELETE FROM goal_allocation;
-DELETE FROM goal_template_entry;
-DELETE FROM goal_plan_month;
-DELETE FROM goal_template;
-DELETE FROM goal;
+-- A tabela goal passa a ter so o nome e o estado ativo. O orcamento, a
+-- prioridade e o prazo vivem na tabela anual (goal_template_entry).
+--
+-- Regra de seguranca: esta migracao nunca apaga linhas. Apenas ajusta o
+-- esquema de forma idempotente, por isso pode ser aplicada varias vezes
+-- (o script scripts/migrate.mjs executa todos os ficheiros em cada deploy).
+-- As linhas de goal, goal_template, goal_plan_month e goal_allocation sao
+-- sempre preservadas e os meses fechados mantem o historico.
 
 ALTER TABLE goal DROP COLUMN IF EXISTS target_amount;
 ALTER TABLE goal DROP COLUMN IF EXISTS priority;
