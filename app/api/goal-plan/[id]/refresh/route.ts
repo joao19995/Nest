@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPostgres } from "@/shared/lib/postgres";
+import { isUuid } from "@/shared/lib/uuid";
 import { goalPlanRepository } from "@/shared/repositories/goal-plan-repository";
 import { getMonthFunding } from "@/shared/lib/goal-funding";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    if (!id) return NextResponse.json({ error: "ID de mês inválido." }, { status: 400 });
+    if (!isUuid(id)) return NextResponse.json({ error: "ID de mês inválido." }, { status: 400 });
     const [row] = await getPostgres()<{ month: string }[]>`SELECT month FROM goal_plan_month WHERE id = ${id}`;
     if (!row) return NextResponse.json({ error: "Mês não encontrado." }, { status: 404 });
     const funding = await getMonthFunding(row.month);

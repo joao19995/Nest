@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { categoryTemplateRepository } from "@/shared/repositories/category-template-repository";
-import { checkEntryReferences, isValidMonth, parseCategoryTemplateEntries } from "@/shared/lib/category-template-validation";
+import { checkEntryReferences, isValidMonth, parseCategoryTemplateEntries, resolveEntryCategories } from "@/shared/lib/category-template-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,11 +31,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Já existe um template a partir de ${body.validFrom}. Atualiza esse template em vez de criar outro.` }, { status: 409 });
     }
 
-    const status = await categoryTemplateRepository.findReferenceStatus(parsed.entries.map((entry) => entry.categoryId), parsed.entries.map((entry) => entry.accountId));
-    const referenceError = checkEntryReferences(parsed.entries, status, new Set());
+    const status = await categoryTemplateRepository.findReferenceStatus(parsed.entries.map((entry) => entry.itemId), parsed.entries.map((entry) => entry.accountId));
+    const resolved = resolveEntryCategories(parsed.entries, status.items);
+    if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: 400 });
+    const referenceError = checkEntryReferences(resolved.entries, status, new Set());
     if (referenceError) return NextResponse.json({ error: referenceError }, { status: 400 });
 
-    return NextResponse.json(await categoryTemplateRepository.create(body.validFrom, parsed.entries), { status: 201 });
+    return NextResponse.json(await categoryTemplateRepository.create(body.validFrom, resolved.entries), { status: 201 });
   } catch (error) {
     console.error("Could not create category template.", error);
     return NextResponse.json({ error: "Não foi possível criar o template." }, { status: 500 });

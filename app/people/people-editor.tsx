@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { calculateMonthlyPlan } from "@/features/monthly-plan/domain/calculate-monthly-plan";
+import { computePeopleSummary } from "@/features/people/domain/people-summary";
 import type { Account, FinanceState, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
-import { initialFinanceState } from "@/shared/lib/finance-demo-state";
 import { entitiesClient } from "@/shared/lib/entities-client";
-import { loadFinanceState } from "@/shared/lib/finance-storage";
+import { emptyFinanceState, loadFinanceState } from "@/shared/lib/finance-storage";
 import { AppNav } from "@/shared/ui/app-nav";
 import { Money } from "@/shared/ui/money";
 
@@ -23,7 +22,7 @@ function currentIncome(incomes: PersonIncome[], personId: string, month: string)
 }
 
 export function PeopleEditor() {
-  const [state, setState] = useState<FinanceState>(initialFinanceState);
+  const [state, setState] = useState<FinanceState>(emptyFinanceState);
   const [personForm, setPersonForm] = useState<PersonDraft>(defaultPersonDraft());
   const [personIncomeForm, setPersonIncomeForm] = useState<PersonIncomeDraft[]>([]);
   const [personModalOpen, setPersonModalOpen] = useState(false);
@@ -62,15 +61,16 @@ export function PeopleEditor() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [accountModalOpen, personModalOpen, savingAccount, savingPersonId]);
 
-  const referenceMonth = state.months[0]?.month ?? new Date().toISOString().slice(0, 7);
-  const referenceYear = Number(referenceMonth.slice(0, 4));
-  const annualPlan = state.annualPlans.find((plan) => plan.year === referenceYear) ?? { year: referenceYear, allocations: [] };
-  const referencePlan = state.months.find((month) => month.month === referenceMonth) ?? { month: referenceMonth, expenses: [] };
-  const calculation = calculateMonthlyPlan(state.configuration, annualPlan, referencePlan);
-  const annualSubsidies = state.configuration.people.reduce((total, person) => {
-    const salary = currentIncome(state.configuration.personIncomes, person.id, referenceMonth)?.amount ?? 0;
-    return total + salary * 2;
-  }, 0);
+  const referenceMonth = new Date().toISOString().slice(0, 7);
+  const summary = computePeopleSummary({
+    month: referenceMonth,
+    people: state.configuration.people,
+    incomes: state.configuration.personIncomes,
+    categories: state.configuration.categories,
+    templates: state.configuration.categoryTemplates,
+  });
+  const annualSubsidies = summary.incomeByPerson.reduce((total, item) => total + item.amount * 2, 0);
+  const amountOf = (items: { personId: string; amount: number }[], personId: string) => items.find((item) => item.personId === personId)?.amount ?? 0;
 
   function openCreatePerson() {
     setError("");
@@ -196,11 +196,11 @@ export function PeopleEditor() {
       </div>
 
       <section className="salary-summary">
-        <article className="panel"><p className="eyebrow">Gastos variáveis</p><h2><Money value={calculation.dailySpending} /></h2><p>Percentagem do dia-a-dia aplicada aos vencimentos.</p></article>
+        <article className="panel"><p className="eyebrow">Gastos variáveis</p><h2><Money value={summary.dailySpending} /></h2><p>Percentagem do dia-a-dia aplicada aos vencimentos.</p></article>
         <article className="panel"><p className="eyebrow">Subsídios anuais</p><h2><Money value={annualSubsidies} /></h2><p>100% dos subsídios é destinado aos Goals.</p></article>
-        <article className="panel"><p className="eyebrow">Gastos fixos conjuntos</p><h2><Money value={calculation.totalTransferRequirement} /></h2><p>Partes iguais para a conta conjunta.</p></article>
-        <article className="panel"><p className="eyebrow">Gastos fixos individuais</p><h2><Money value={calculation.individualFixedTotal} /></h2><p>Valor preenchido por pessoa.</p></article>
-        <article className="panel"><p className="eyebrow">Fundo de emergência</p><h2><Money value={calculation.emergencyFund} /></h2><p>Calculado a partir das configurações pessoais.</p></article>
+        <article className="panel"><p className="eyebrow">Gastos fixos conjuntos</p><h2><Money value={summary.jointFixedTotal} /></h2><p>Partes iguais para a conta conjunta.</p></article>
+        <article className="panel"><p className="eyebrow">Gastos fixos individuais</p><h2><Money value={summary.individualFixedTotal} /></h2><p>Valor preenchido por pessoa.</p></article>
+        <article className="panel"><p className="eyebrow">Fundo de emergência</p><h2><Money value={summary.emergencyFund} /></h2><p>Calculado a partir das configurações pessoais.</p></article>
       </section>
 
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -213,10 +213,9 @@ export function PeopleEditor() {
             {state.configuration.people.map((person) => {
               const income = currentIncome(state.configuration.personIncomes, person.id, referenceMonth);
               const salary = income?.amount ?? 0;
-              const share = calculation.totalIncome > 0 ? (calculation.incomeByPerson.find((item) => item.personId === person.id)?.amount ?? 0) / calculation.totalIncome : 0;
-              const emergencyAmount = calculation.fixedExpenses * person.emergencyFundMonths * share;
-              const minimum = calculation.transfers.find((transfer) => transfer.personId === person.id)?.minimumAmount ?? 0;
-              const individualFixed = calculation.individualFixedByPerson.find((item) => item.personId === person.id)?.amount ?? 0;
+              const emergencyAmount = amountOf(summary.emergencyFundByPerson, person.id);
+              const minimum = amountOf(summary.minimumByPerson, person.id);
+              const individualFixed = amountOf(summary.individualFixedByPerson, person.id);
               return <div className="person-table-row" key={person.id}>
                 <strong className="person-table-name">{person.name}</strong>
                 <span><Money value={salary} /><small>{income ? `Válido desde ${income.validFrom}` : "Sem histórico salarial"}</small></span>

@@ -1,5 +1,5 @@
-import { AppNav } from "@/shared/ui/app-nav";
+import { DashboardPage } from "@/features/dashboard/components/dashboard-page";
 
 export default function HomePage() {
-  return <main className="shell compact-shell"><AppNav active="dashboard" /></main>;
+  return <DashboardPage />;
 }

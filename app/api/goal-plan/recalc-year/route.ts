@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { goalPlanRepository } from "@/shared/repositories/goal-plan-repository";
 import { goalTemplateRepository } from "@/shared/repositories/goal-template-repository";
+import { goalRepository } from "@/shared/repositories/goal-repository";
 import { getYearFunding } from "@/shared/lib/goal-funding";
 import { buildYearSeeds } from "@/shared/lib/goal-year-planner";
 
@@ -18,18 +19,20 @@ export async function POST(request: Request) {
     if (typeof body.year !== "number" || !Number.isInteger(body.year) || body.year < 2000 || body.year > 2100) {
       return NextResponse.json({ error: "Indica um ano válido (YYYY)." }, { status: 400 });
     }
-    const [funding, templates] = await Promise.all([
+    const [funding, templates, activeGoals] = await Promise.all([
       getYearFunding(body.year),
       goalTemplateRepository.findAll(),
+      goalRepository.list(),
     ]);
-    const { seeds, missingMonths } = buildYearSeeds({
+    const { seeds, missingMonths, invalidMonths } = buildYearSeeds({
       year: body.year,
       funding: funding.months.map((item) => ({ month: item.month, available: item.available })),
       templates,
+      activeGoalIds: new Set(activeGoals.map((goal) => goal.id)),
     });
     if (seeds.length) await goalPlanRepository.ensureYearPlansAtomic(body.year, seeds);
     const plans = await goalPlanRepository.listByYear(body.year);
-    return NextResponse.json({ plans, funding, missingMonths });
+    return NextResponse.json({ plans, funding, missingMonths, invalidMonths });
   } catch (error) {
     console.error("Could not recalculate goal year.", error);
     return NextResponse.json({ error: "Não foi possível recalcular o ano." }, { status: 500 });

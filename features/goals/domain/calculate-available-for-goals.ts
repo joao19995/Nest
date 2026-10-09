@@ -1,6 +1,6 @@
 import type { PersonIncome } from "@/features/monthly-plan/domain/types";
 
-// Meses de bónus fixos, tal como em calculate-monthly-plan.ts.
+// Meses de bónus fixos (subsídios de junho e dezembro).
 const BONUS_MONTHS = [6, 12];
 
 export type PersonDailyRate = {

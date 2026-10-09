@@ -8,10 +8,13 @@ type PlanRow = { id: string; month: string; template_id: string; closed: boolean
 type EntryRow = {
   id: string;
   monthly_plan_id: string;
+  item_id: string;
   category_id: string;
   account_id: string;
   planned: number | string;
   actual: number | string;
+  item_name: string;
+  item_active: boolean;
   category_name: string;
   category_type: "FIXED" | "VARIABLE";
   account_name: string;
@@ -21,6 +24,9 @@ type EntryRow = {
 function toEntry(row: EntryRow): MonthlyPlanEntryView {
   return {
     id: row.id,
+    itemId: row.item_id,
+    itemName: row.item_name,
+    itemActive: row.item_active,
     categoryId: row.category_id,
     categoryName: row.category_name,
     categoryType: row.category_type,
@@ -41,14 +47,16 @@ export class MonthlyPlanRepository {
     const sql = getPostgres();
     const ids = plans.map((plan) => plan.id);
     const rows = await sql<EntryRow[]>`
-      SELECT e.id, e.monthly_plan_id, e.category_id, e.account_id, e.planned, e.actual,
-             c.name AS category_name, c.type AS category_type,
-             a.name AS account_name, a.owner_person_id AS account_owner_person_id
+      SELECT e.id, e.monthly_plan_id, e.item_id, e.category_id, e.account_id, e.planned, e.actual,
+              i.name AS item_name, i.active AS item_active,
+              c.name AS category_name, c.type AS category_type,
+              a.name AS account_name, a.owner_person_id AS account_owner_person_id
       FROM monthly_plan_entry e
+      JOIN item i ON i.id = e.item_id
       JOIN category c ON c.id = e.category_id
       JOIN account a ON a.id = e.account_id
       WHERE e.monthly_plan_id IN ${sql(ids)}
-      ORDER BY c.name
+      ORDER BY c.name, i.name
     `;
     return plans.map((plan) => ({
       id: plan.id,
@@ -71,6 +79,17 @@ export class MonthlyPlanRepository {
     return (await this.hydrate(plans))[0] ?? null;
   }
 
+  /** Todos os meses guardados de um ano, ordenados. Inclui meses fechados. */
+  async listByYear(year: number): Promise<MonthlyPlanView[]> {
+    const sql = getPostgres();
+    const plans = await sql<PlanRow[]>`
+      SELECT id, month, template_id, closed FROM monthly_plan
+      WHERE month >= ${`${year}-01`} AND month <= ${`${year}-12`}
+      ORDER BY month
+    `;
+    return this.hydrate(plans);
+  }
+
   // Cria o mês copiando os entries ativos do template aplicável (snapshot: planned = expectedAmount, actual = 0).
   // Devolve null se não existir template aplicável ao mês.
   async create(month: string): Promise<MonthlyPlanView | null> {
@@ -84,8 +103,8 @@ export class MonthlyPlanRepository {
       await transaction`INSERT INTO monthly_plan (id, month, template_id, closed) VALUES (${id}, ${month}, ${template.id}, FALSE)`;
       for (const entry of activeEntries) {
         await transaction`
-          INSERT INTO monthly_plan_entry (id, monthly_plan_id, category_id, account_id, planned, actual)
-          VALUES (${randomUUID()}, ${id}, ${entry.categoryId}, ${entry.accountId}, ${entry.expectedAmount}, 0)
+          INSERT INTO monthly_plan_entry (id, monthly_plan_id, item_id, category_id, account_id, planned, actual)
+          VALUES (${randomUUID()}, ${id}, ${entry.itemId}, ${entry.categoryId}, ${entry.accountId}, ${entry.expectedAmount}, 0)
         `;
       }
     });

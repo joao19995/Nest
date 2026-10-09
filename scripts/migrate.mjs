@@ -28,8 +28,7 @@ try {
       continue;
     }
     const contents = await readFile(join(migrationDirectory, file), "utf8");
-    const statements = contents.split(";").map((statement) => statement.trim()).filter(Boolean);
-    for (const statement of statements) await sql.unsafe(statement);
+    await sql.unsafe(contents);
     await sql.unsafe("INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING", [file]);
     console.log(`Applied ${file}`);
   }

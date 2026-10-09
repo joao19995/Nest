@@ -68,7 +68,7 @@ Important domain concepts include:
 - Fixed and variable expense categories.
 - Monthly budget templates.
 - Monthly plans and actual expenses.
-- Income-proportional household contributions.
+- Equal-split household contributions.
 
 ### Income history
 
@@ -94,15 +94,15 @@ When calculating personal spending for contribution settlement, count expenses p
 
 ### Household contributions
 
-Contributions are proportional to the applicable incomes of the household members.
+Contributions are split equally between the household members.
 
 The contribution base is:
 
-`max(total planned expenses * 1.10, total actual expenses)`
+`max(total planned expenses, total actual expenses)`
 
-The 10% margin is intentional.
+There is no margin on top of the planned total.
 
-Each person's contribution quota is their income proportion multiplied by the contribution base.
+Each person's contribution quota is the contribution base divided in equal parts by the number of people (not proportional to income).
 
 Personal expenses paid from an individual's account are credited against that person's quota:
 
@@ -110,6 +110,8 @@ Personal expenses paid from an individual's account are credited against that pe
 - If their personal spending exceeds their quota, the excess is reimbursed from the joint account.
 
 Expenses paid from the joint account count toward total actual expenses, but not toward either person's personal spending.
+
+Income by effective date is still used when calculating the available amount for goals, but it does not affect the quota.
 
 The contribution calculation must not assume that existing money in the joint account can be consumed to cover a budget shortfall.
 
@@ -126,6 +128,12 @@ Preserve these rules unless the product owner explicitly changes them.
 - Treat the database as the source of truth for persisted application data.
 
 If a schema or migration change is necessary, explain why and how it affects existing data.
+
+### Current environment status
+
+- The application is NOT in production yet. The database configured in `.env.local` is a test database.
+- Migrations may be applied and validated against that configured test database as part of development work.
+- Still never drop or alter data without explicit approval, and report the migration result when it is run.
 
 ## 6. UI and User Experience
 

@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { initialFinanceState } from "@/shared/lib/finance-demo-state";
 import { entitiesClient } from "@/shared/lib/entities-client";
-import { loadFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
+import { emptyFinanceState, loadFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
 import { AppNav } from "@/shared/ui/app-nav";
 import { GoalMonthlyReview } from "@/features/goals/components/goal-monthly-review";
 import { calculateMonthContributions, totalActual, totalPlanned } from "../domain/month-planning";
@@ -28,7 +27,7 @@ function euro(value: number) {
 }
 
 export function MonthlyPlanPage() {
-  const [state, setState] = useState<FinanceState>(initialFinanceState);
+  const [state, setState] = useState<FinanceState>(emptyFinanceState);
   const [month, setMonth] = useState(currentMonth());
   const [plan, setPlan] = useState<MonthlyPlanView | null>(null);
   const [status, setStatus] = useState<"loading" | "missing" | "ready">("loading");
@@ -153,15 +152,15 @@ export function MonthlyPlanPage() {
         <section className="settings-section">
           <div className="section-title"><div><p className="eyebrow">Despesas</p><h2>Planeado e actual</h2></div></div>
           <div className="category-table month-table">
-            <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Planeado</span><span>Actual</span><span>Diferença</span></div>
+            <div className="category-table-row category-table-header"><span>Item · Categoria</span><span>Conta</span><span>Planeado</span><span>Actual</span><span>Diferença</span></div>
             {entries.map((entry) => {
               const value = displayedActual(entry);
               return <div className="category-table-row" key={entry.id}>
-                <strong>{entry.categoryName}</strong>
+                <strong>{entry.itemName}<small>{entry.categoryName}{!entry.itemActive && " · item inativo"}</small></strong>
                 <span>{entry.accountName}</span>
                 <span>{euro(entry.planned)}</span>
                 <span>
-                  <input type="number" min="0" step="0.01" aria-label={`Valor actual de ${entry.categoryName}`} disabled={plan.closed}
+                  <input type="number" min="0" step="0.01" aria-label={`Valor actual de ${entry.itemName}`} disabled={plan.closed}
                     value={drafts[entry.id] ?? entry.actual}
                     onChange={(event) => setDrafts((current) => ({ ...current, [entry.id]: event.target.value }))}
                     onBlur={() => void saveActual(entry)} />
@@ -176,7 +175,7 @@ export function MonthlyPlanPage() {
           <div className="section-title"><div><p className="eyebrow">Contribuições</p><h2>Quanto cada pessoa transfere</h2></div></div>
           {contributions?.status === "no-income" && <p className="form-error" role="alert">{contributions.message}</p>}
           {contributions?.status === "ok" && <>
-            <p className="form-note">Base de contribuição: {euro(contributions.contributionRequired)} (maior entre o planeado e o actual).</p>
+            <p className="form-note">Base de contribuição: {euro(contributions.contributionRequired)} (maior entre o planeado e o actual). Lucro da conta conjunta: {euro(contributions.jointSurplus)} (base − actual, só informativo; não cobre défices).</p>
             <div className="category-table month-contributions">
               <div className="category-table-row category-table-header"><span>Pessoa</span><span>Quota</span><span>Já pago pela conta pessoal</span><span>A transferir para a conjunta</span><span>A receber da conjunta</span></div>
               {contributions.people.map((item) => <div className="category-table-row" key={item.personId}>

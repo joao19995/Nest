@@ -39,7 +39,7 @@ describe("calculateAvailableForGoals", () => {
 
   it("nunca devolve negativo e usa o income aplicável ao mês", () => {
     const tight = calculateAvailableForGoals({ month: "2026-03", incomes, people, contributionRequired: 5000 });
-    expect(tight.available).toBe(4500 > 5000 + 1125 ? tight.available : 0);
+    expect(tight.available).toBe(0);
 
     const withRaise = [...incomes, { id: "i3", personId: "joao", amount: 3000, validFrom: "2026-05-01" }];
     const before = calculateAvailableForGoals({ month: "2026-04", incomes: withRaise, people, contributionRequired: 1870 });

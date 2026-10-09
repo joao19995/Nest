@@ -3,8 +3,9 @@ import { parseGoalTemplateEntries } from "@/app/api/goal-templates/route";
 import { goalTemplateRepository, GoalTemplateVersionError } from "@/shared/repositories/goal-template-repository";
 import { goalPlanRepository } from "@/shared/repositories/goal-plan-repository";
 import { goalRepository } from "@/shared/repositories/goal-repository";
+import { isUuid } from "@/shared/lib/uuid";
 import { getYearFunding } from "@/shared/lib/goal-funding";
-import { buildYearSeeds, previewTemplateChange } from "@/shared/lib/goal-year-planner";
+import { buildTemplateChangeSeeds, previewTemplateChange } from "@/shared/lib/goal-year-planner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    if (!id) return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+    if (!isUuid(id)) return NextResponse.json({ error: "ID inválido." }, { status: 400 });
     const body = (await request.json()) as { annualTotal?: unknown; entries?: unknown; dryRun?: unknown };
     if (typeof body.annualTotal !== "number" || !Number.isFinite(body.annualTotal) || body.annualTotal < 0) {
       return NextResponse.json({ error: "O valor anual deve ser um número não negativo." }, { status: 400 });
@@ -32,8 +33,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!existing) return NextResponse.json({ error: "Template não encontrado." }, { status: 404 });
 
     const active = await goalRepository.list();
-    const activeIds = new Set(active.map((goal) => goal.id));
-    if (parsed.entries.some((entry) => !activeIds.has(entry.goalId))) {
+    const activeGoalIds = new Set(active.map((goal) => goal.id));
+    if (parsed.entries.some((entry) => !activeGoalIds.has(entry.goalId))) {
       return NextResponse.json(
         { error: "A tabela refere um objetivo inexistente ou desativado. Reativa o objetivo ou remove-o da tabela." },
         { status: 400 },
@@ -77,6 +78,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         storedPlans,
         fundingByMonth: new Map(funding.months.map((item) => [item.month, item.available])),
         templates,
+        activeGoalIds,
         replacedId: id,
         proposedId: id,
       });
@@ -85,10 +87,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
     try {
       const effective = templates.map((template) => (template.id === id ? { ...template, entries: parsed.entries } : template));
-      const { seeds } = buildYearSeeds({
+      // Mesmo conjunto que o preview: só meses abertos >= validFrom (mais
+      // criações em falta). Meses anteriores e fechados nunca são tocados.
+      const { seeds } = buildTemplateChangeSeeds({
         year,
-        funding: funding.months.map((item) => ({ month: item.month, available: item.available })),
+        validFrom: existing.validFrom,
+        fundingByMonth: new Map(funding.months.map((item) => [item.month, item.available])),
+        storedPlans,
         templates: effective,
+        activeGoalIds,
       });
       const updated = await goalTemplateRepository.replaceUnusedWithYearSeeds(
         id,

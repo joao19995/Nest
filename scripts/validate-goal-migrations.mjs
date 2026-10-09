@@ -56,9 +56,13 @@ try {
     }
   }
 
+  // NOTA 013: target_amount e priority voltaram a existir com a semantica do
+  // Excel (ver 013_goal_details.sql), por isso ja nao servem para detetar a
+  // base pre-009. Aqui verificam-se só deadline_month/status, que continuam
+  // removidas em qualquer base pos-009.
   const legacyColumns = await sql.unsafe(`
     SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'goal' AND column_name IN ('target_amount', 'priority', 'deadline_month', 'status')
+    WHERE table_name = 'goal' AND column_name IN ('deadline_month', 'status')
   `);
   const legacyNames = legacyColumns.map((row) => row.column_name);
   if (legacyNames.length && archive) {

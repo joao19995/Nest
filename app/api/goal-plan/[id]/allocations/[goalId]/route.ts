@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPostgres } from "@/shared/lib/postgres";
+import { isUuid } from "@/shared/lib/uuid";
 import { goalPlanRepository } from "@/shared/repositories/goal-plan-repository";
 
 export const runtime = "nodejs";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function PATCH(request: Request, context: { params: Promise<{ id: string; goalId: string }> }) {
   try {
     const { id, goalId } = await context.params;
-    if (!id || !goalId) return NextResponse.json({ error: "IDs inválidos." }, { status: 400 });
+    if (!isUuid(id) || !isUuid(goalId)) return NextResponse.json({ error: "IDs inválidos." }, { status: 400 });
     const body = (await request.json()) as { planned?: unknown; actual?: unknown };
     if (body.planned !== undefined && (typeof body.planned !== "number" || !Number.isFinite(body.planned) || body.planned < 0)) {
       return NextResponse.json({ error: "O valor planeado deve ser um número não negativo." }, { status: 400 });

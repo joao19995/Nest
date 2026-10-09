@@ -135,6 +135,12 @@ export class GoalPlanRepository {
     return this.hydrate(plans);
   }
 
+  /** Meses não fechados (qualquer ano), ordenados. Para validar desativações. */
+  async listOpenMonths(): Promise<{ month: string }[]> {
+    const sql = getPostgres();
+    return sql<{ month: string }[]>`SELECT month FROM goal_plan_month WHERE closed = FALSE ORDER BY month`;
+  }
+
   async listClosedPlanned(): Promise<{ month: string; goalId: string; planned: number }[]> {
     const sql = getPostgres();
     const rows = await sql<{ month: string; goal_id: string; planned: number | string }[]>`

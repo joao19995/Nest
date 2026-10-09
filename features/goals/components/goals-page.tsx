@@ -5,7 +5,8 @@ import { entitiesClient } from "@/shared/lib/entities-client";
 import { AppNav } from "@/shared/ui/app-nav";
 import { isValidTemplateTotal, totalPercentage } from "../domain/goal-template";
 import type { GoalTemplateEntry } from "../domain/goal-template";
-import type { Goal } from "../domain/types";
+import type { Goal, GoalPriority, GoalTimeline, GoalYearReview } from "../domain/types";
+import { goalYearTracking } from "../domain/goal-tracking";
 import type { YearFunding } from "@/shared/lib/goal-funding";
 import type { GoalPlanView } from "@/shared/repositories/goal-plan-repository";
 
@@ -43,8 +44,10 @@ type FutureChange = {
 type TemplatePreview = {
   validFrom: string;
   affected: FutureChange[];
+  toCreate: string[];
   closedSkipped: string[];
   missingMonths: string[];
+  invalidMonths: { month: string; reason: string }[];
 };
 
 export function GoalsPage() {
@@ -70,9 +73,13 @@ export function GoalsPage() {
   // Painel B — gestão de objetivos (modal como nas categorias).
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
-  const [goalFormName, setGoalFormName] = useState("");
+  const [goalForm, setGoalForm] = useState({ name: "", targetAmount: "", priority: "NICE_TO_HAVE" as GoalPriority, timeline: "ANUAL" as GoalTimeline, realism: "OK", notes: "" });
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalFormError, setGoalFormError] = useState("");
+
+  // Revisão anual: felicidade (1–5) e reflexão por objetivo e ano.
+  const [reviews, setReviews] = useState<GoalYearReview[]>([]);
+  const [reflectionDrafts, setReflectionDrafts] = useState<Record<string, string>>({});
 
   // Nota do recálculo anual.
   const [monthNote, setMonthNote] = useState("");
@@ -91,9 +98,13 @@ export function GoalsPage() {
   async function reloadYear(targetYear: number) {
     setYearLoading(true);
     try {
-      const { plans, funding } = await entitiesClient.getGoalYear(targetYear);
+      const [{ plans, funding }, yearReviews] = await Promise.all([
+        entitiesClient.getGoalYear(targetYear),
+        entitiesClient.getGoalReviews(targetYear),
+      ]);
       setYearPlans(plans);
       setYearFunding(funding);
+      setReviews(yearReviews);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o ano.");
     } finally {
@@ -118,6 +129,7 @@ export function GoalsPage() {
 
   useEffect(() => {
     setMonthNote("");
+    setReflectionDrafts({});
     void reloadYear(year);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
@@ -149,7 +161,7 @@ export function GoalsPage() {
   }
 
   function updateTemplateRowAmount(goalId: string, amount: number) {
-    updateTemplateRowPercentage(goalId, editorAnnualTotal > 0 ? amount / editorAnnualTotal * 100 : 0);
+    updateTemplateRowPercentage(goalId, editorAnnualTotal > 0 ? Math.round(amount / editorAnnualTotal * 10000) / 100 : 0);
   }
 
   function openTemplateEditor() {
@@ -183,7 +195,7 @@ export function GoalsPage() {
       const result = existingTemplate
         ? await entitiesClient.previewGoalTemplateUpdate(existingTemplate.id, { annualTotal, entries: templateRows })
         : await entitiesClient.previewGoalTemplate({ validFrom: templateDate, annualTotal, entries: templateRows });
-      setTemplatePreview({ validFrom: result.validFrom, affected: result.affected as FutureChange[], closedSkipped: result.closedSkipped, missingMonths: result.missingMonths });
+      setTemplatePreview({ validFrom: result.validFrom, affected: result.affected as FutureChange[], toCreate: result.toCreate ?? [], closedSkipped: result.closedSkipped, missingMonths: result.missingMonths, invalidMonths: result.invalidMonths ?? [] });
     } catch (cause) {
       setTemplatePreview(null);
       setTemplateError(cause instanceof Error ? cause.message : "Não foi possível pré-visualizar a tabela.");
@@ -229,20 +241,27 @@ export function GoalsPage() {
 
   function openCreateGoal() {
     setEditingGoalId(null);
-    setGoalFormName("");
+    setGoalForm({ name: "", targetAmount: "", priority: "NICE_TO_HAVE", timeline: "ANUAL", realism: "OK", notes: "" });
     setGoalFormError("");
     setGoalModalOpen(true);
   }
 
-  function openRenameGoal(goal: Goal) {
+  function openEditGoal(goal: Goal) {
     setEditingGoalId(goal.id);
-    setGoalFormName(goal.name);
+    setGoalForm({
+      name: goal.name,
+      targetAmount: goal.targetAmount ? String(goal.targetAmount) : "",
+      priority: goal.priority,
+      timeline: goal.timeline,
+      realism: goal.realism,
+      notes: goal.notes,
+    });
     setGoalFormError("");
     setGoalModalOpen(true);
   }
 
   async function saveGoal() {
-    const trimmed = goalFormName.trim();
+    const trimmed = goalForm.name.trim();
     if (!trimmed) {
       setGoalFormError("Indica um nome para o objetivo.");
       return;
@@ -251,13 +270,34 @@ export function GoalsPage() {
       setGoalFormError("Indica um nome até 100 caracteres.");
       return;
     }
+    const targetAmount = goalForm.targetAmount.trim() === "" ? 0 : Number(goalForm.targetAmount);
+    if (!Number.isFinite(targetAmount) || targetAmount < 0) {
+      setGoalFormError("O orçamento tem de ser um número não negativo.");
+      return;
+    }
+    if (goalForm.realism.length > 50) {
+      setGoalFormError("O realismo tem de ter até 50 caracteres.");
+      return;
+    }
+    if (goalForm.notes.length > 2000) {
+      setGoalFormError("As notas têm de ter até 2000 caracteres.");
+      return;
+    }
     setGoalFormError("");
     setSavingGoal(true);
     try {
+      const input = {
+        name: trimmed,
+        targetAmount: Math.round(targetAmount * 100) / 100,
+        priority: goalForm.priority,
+        timeline: goalForm.timeline,
+        realism: goalForm.realism.trim(),
+        notes: goalForm.notes.trim(),
+      };
       if (editingGoalId) {
-        await entitiesClient.renameGoal(editingGoalId, trimmed);
+        await entitiesClient.updateGoal(editingGoalId, input);
       } else {
-        await entitiesClient.createGoal({ name: trimmed });
+        await entitiesClient.createGoal(input);
       }
       setGoalModalOpen(false);
       await reloadCatalog();
@@ -281,6 +321,27 @@ export function GoalsPage() {
     }
   }
 
+  const reviewByGoal = useMemo(() => new Map(reviews.map((item) => [item.goalId, item])), [reviews]);
+
+  async function saveReview(goalId: string, happiness: number | null, reflection: string) {
+    if (reflection.length > 2000) {
+      setError("A reflexão tem de ter até 2000 caracteres.");
+      return;
+    }
+    setError("");
+    try {
+      const saved = await entitiesClient.saveGoalReview({ goalId, year, happiness, reflection });
+      setReviews((current) => [...current.filter((item) => item.goalId !== goalId), saved]);
+      setReflectionDrafts((current) => {
+        const next = { ...current };
+        delete next[goalId];
+        return next;
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível guardar a revisão.");
+    }
+  }
+
   async function recalculateYear() {
     setError("");
     setBusy(true);
@@ -288,10 +349,13 @@ export function GoalsPage() {
       const result = await entitiesClient.recalcGoalYear(year);
       setYearPlans(result.plans);
       setYearFunding(result.funding);
+      const invalid = result.invalidMonths ?? [];
       setMonthNote(
-        result.missingMonths.length
-          ? `Meses sem tabela aplicável (mantidos como estavam): ${result.missingMonths.join(", ")}.`
-          : "Ano recalculado a partir do financiamento atual. Meses fechados intactos.",
+        invalid.length
+          ? `Meses inválidos (objetivo inativo, não recalculados): ${invalid.map((item) => item.month).join(", ")}. Cria uma nova versão do template sem esse objetivo.`
+          : result.missingMonths.length
+            ? `Meses sem tabela aplicável (mantidos como estavam): ${result.missingMonths.join(", ")}.`
+            : "Ano recalculado a partir do financiamento atual. Meses fechados intactos.",
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível recalcular o ano.");
@@ -354,6 +418,59 @@ export function GoalsPage() {
                   <span>{itemFunding ? euro(itemFunding.available) : itemPlan ? euro(itemPlan.availableAmount) : "—"}</span>
                   <span>{itemPlan ? euro(itemPlan.allocations.reduce((sum, entry) => sum + entry.planned, 0)) : "—"}</span>
                   <span>{itemPlan ? euro(itemPlan.allocations.reduce((sum, entry) => sum + entry.actual, 0)) : "—"}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Acompanhamento anual por objetivo */}
+      <section className="settings-section">
+        <div className="section-title"><div><p className="eyebrow">Acompanhamento {year}</p><h2>Alvo, acumulado e risco</h2></div></div>
+        <p className="form-note">O orçamento é só acompanhamento: não altera as percentagens. Em risco = o fim da timeline (T1 mar, T2 jun, T3 set, T4/ANUAL dez) já passou ou é este mês e o reservado fica abaixo do alvo.</p>
+        {yearLoading ? (
+          <p className="form-note">A carregar o ano…</p>
+        ) : (
+          <div className="category-table goal-tracking">
+            <div className="category-table-row category-table-header"><span>Objetivo</span><span>Alvo</span><span>Planeado</span><span>Reservado</span><span>Falta</span><span>Estado</span></div>
+            {goalYearTracking({ goals, plans: yearPlans, year, currentMonth: currentMonth() }).map((row) => (
+              <div className="category-table-row" key={row.goalId}>
+                <strong>{row.goalName}</strong>
+                <span>{euro(row.target)}</span>
+                <span>{euro(row.plannedTotal)}</span>
+                <span>{euro(row.actualTotal)}</span>
+                <span>{euro(row.missing)}</span>
+                <span>{row.atRisk ? <span className="risk-flag">Em risco</span> : <span className="ok-flag">Em dia</span>}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Revisão anual: felicidade e reflexão */}
+      <section className="settings-section">
+        <div className="section-title"><div><p className="eyebrow">Revisão {year}</p><h2>Felicidade e reflexão</h2></div></div>
+        <p className="form-note">A felicidade grava ao escolher; a reflexão grava ao sair do campo.</p>
+        {yearLoading ? (
+          <p className="form-note">A carregar o ano…</p>
+        ) : (
+          <div className="category-table goal-review">
+            <div className="category-table-row category-table-header"><span>Objetivo</span><span>Felicidade</span><span>Reflexão / lição</span></div>
+            {goals.map((goal) => {
+              const review = reviewByGoal.get(goal.id);
+              return (
+                <div className="category-table-row" key={goal.id}>
+                  <strong>{goal.name}</strong>
+                  <span>
+                    <select aria-label={`Felicidade de ${goal.name} em ${year}`} value={review?.happiness ?? ""} onChange={(event) => void saveReview(goal.id, event.target.value === "" ? null : Number(event.target.value), reflectionDrafts[goal.id] ?? review?.reflection ?? "")}>
+                      <option value="">—</option>
+                      {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                  </span>
+                  <span>
+                    <input aria-label={`Reflexão de ${goal.name} em ${year}`} maxLength={2000} value={reflectionDrafts[goal.id] ?? review?.reflection ?? ""} onChange={(event) => setReflectionDrafts((current) => ({ ...current, [goal.id]: event.target.value }))} onBlur={(event) => void saveReview(goal.id, review?.happiness ?? null, event.target.value)} />
+                  </span>
                 </div>
               );
             })}
@@ -451,8 +568,14 @@ export function GoalsPage() {
                 {templatePreview.closedSkipped.length > 0 && (
                   <p className="form-note">Fechados (não mudam): {templatePreview.closedSkipped.map(displayMonth).join(", ")}.</p>
                 )}
+                {templatePreview.toCreate.length > 0 && (
+                  <p className="form-note">Meses a criar: {templatePreview.toCreate.map(displayMonth).join(", ")}.</p>
+                )}
                 {templatePreview.missingMonths.length > 0 && (
                   <p className="form-note">Sem tabela aplicável (não alterados): {templatePreview.missingMonths.join(", ")}.</p>
+                )}
+                {templatePreview.invalidMonths.length > 0 && (
+                  <p className="form-error" role="alert">Meses inválidos (objetivo inativo, não gravados): {templatePreview.invalidMonths.map((item) => displayMonth(item.month)).join(", ")}.</p>
                 )}
               </>
             )}
@@ -481,7 +604,7 @@ export function GoalsPage() {
                 <strong>{item.name}</strong>
                 <div className="entity-action-buttons">
                   <button className="entity-edit-button" type="button" title={`Editar ${item.name}`} aria-label={`Editar ${item.name}`}
-                    onClick={() => openRenameGoal(item)}>
+                    onClick={() => openEditGoal(item)}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>
                   </button>
                   <button className="entity-edit-button entity-remove-button" type="button" title={`Desativar ${item.name}`} aria-label={`Desativar ${item.name}`}
@@ -499,7 +622,16 @@ export function GoalsPage() {
         <section className="entity-modal" role="dialog" aria-modal="true" aria-labelledby="goal-modal-title">
           <div className="entity-modal-heading"><div><p className="eyebrow">Objetivos</p><h2 id="goal-modal-title">{editingGoalId ? "Editar objetivo" : "Novo objetivo"}</h2></div><button className="entity-modal-close" type="button" aria-label="Fechar" onClick={() => setGoalModalOpen(false)} disabled={savingGoal}>×</button></div>
           <form onSubmit={(event) => { event.preventDefault(); void saveGoal(); }}>
-            <label className="entity-modal-field">Nome<input autoFocus required maxLength={100} value={goalFormName} onChange={(event) => setGoalFormName(event.target.value)} /></label>
+            <label className="entity-modal-field">Nome<input autoFocus required maxLength={100} value={goalForm.name} onChange={(event) => setGoalForm((current) => ({ ...current, name: event.target.value }))} /></label>
+            <div className="person-modal-settings">
+              <label className="entity-modal-field">Orçamento (€)<input type="number" min="0" step="0.01" value={goalForm.targetAmount} onChange={(event) => setGoalForm((current) => ({ ...current, targetAmount: event.target.value }))} /></label>
+              <label className="entity-modal-field">Realismo<input maxLength={50} value={goalForm.realism} onChange={(event) => setGoalForm((current) => ({ ...current, realism: event.target.value }))} /></label>
+            </div>
+            <div className="person-modal-settings">
+              <label className="entity-modal-field">Categoria<select value={goalForm.priority} onChange={(event) => setGoalForm((current) => ({ ...current, priority: event.target.value as GoalPriority }))}><option value="GRANDE">GRANDE</option><option value="PEQUENO">PEQUENO</option><option value="NICE_TO_HAVE">NICE TO HAVE</option></select></label>
+              <label className="entity-modal-field">Timeline<select value={goalForm.timeline} onChange={(event) => setGoalForm((current) => ({ ...current, timeline: event.target.value as GoalTimeline }))}><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option><option value="T4">T4</option><option value="ANUAL">ANUAL</option></select></label>
+            </div>
+            <label className="entity-modal-field">Impacto / porquê<input maxLength={2000} value={goalForm.notes} onChange={(event) => setGoalForm((current) => ({ ...current, notes: event.target.value }))} /></label>
             {goalFormError && <p className="form-error" role="alert">{goalFormError}</p>}
             <div className="entity-modal-actions"><button className="secondary-button" type="button" onClick={() => setGoalModalOpen(false)} disabled={savingGoal}>Cancelar</button><button className="save-button" type="submit" disabled={savingGoal}>{savingGoal ? "A guardar…" : "Guardar objetivo"}</button></div>
           </form>

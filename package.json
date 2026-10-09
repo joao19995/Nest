@@ -6,7 +6,6 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
     "test": "vitest run",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs"

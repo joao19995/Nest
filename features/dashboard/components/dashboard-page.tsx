@@ -1,28 +1,113 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { calculateMonthlyPlan } from "@/features/monthly-plan/domain/calculate-monthly-plan";
-import type { MonthlyPlan } from "@/features/monthly-plan/domain/types";
-import { loadFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
-import { initialFinanceState } from "@/shared/lib/finance-demo-state";
+import { useEffect, useMemo, useState } from "react";
+import { entitiesClient } from "@/shared/lib/entities-client";
 import { AppNav } from "@/shared/ui/app-nav";
 import { Money } from "@/shared/ui/money";
+import type { MonthlyPlanView } from "@/features/monthly-plan/domain/types";
+import type { ItemView } from "@/shared/repositories/item-repository";
+import { buildDashboardRows } from "../domain/dashboard-table";
 
-const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+function monthLabel(month: string) {
+  return new Intl.DateTimeFormat("pt-PT", { month: "short", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+}
+
+function percent(value: number | null) {
+  if (value === null) return "—";
+  return `${value.toLocaleString("pt-PT", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+}
 
 export function DashboardPage() {
-  const [state, setState] = useState(initialFinanceState);
-  useEffect(() => { void loadFinanceState().then(setState).catch(showFinanceStorageError); }, []);
-  const year = 2026;
-  const annualPlan = state.annualPlans.find((plan) => plan.year === year) ?? { year, allocations: [] };
-  const months = monthNames.map((_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
-  const calculations = months.map((month) => calculateMonthlyPlan(state.configuration, annualPlan, state.months.find((item) => item.month === month) ?? ({ month, expenses: [] } satisfies MonthlyPlan)));
-  const totalIncome = calculations.reduce((sum, calculation) => sum + calculation.totalIncome + calculation.totalBonus, 0);
-  const totalExpenses = calculations.reduce((sum, calculation) => sum + calculation.plannedExpenses, 0);
-  const totalAvailable = calculations.reduce((sum, calculation) => sum + calculation.availableForGoals, 0);
-  const totalPlannedGoals = annualPlan.allocations.reduce((sum, allocation) => sum + allocation.amount, 0);
-  const goalAllocation = (goalId: string, month: string) => annualPlan.allocations.find((allocation) => allocation.goalId === goalId && allocation.month === month)?.amount ?? 0;
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [items, setItems] = useState<ItemView[]>([]);
+  const [plans, setPlans] = useState<MonthlyPlanView[]>([]);
+  // null = ainda não escolhido pelo utilizador: mostra todos os itens.
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  return <main className="shell"><AppNav active="dashboard" /><section className="hero-row"><div><p className="eyebrow">Visão anual</p><h1>Plano de {year}</h1><p className="lede">O que esperamos receber, gastar e direcionar para os Goals ao longo do ano.</p></div><Link className="new-month-button" href="/settings">Editar regras globais</Link></section><section className="metrics-grid"><article className="metric-card metric-primary"><div className="metric-label"><span className="dot green" /> Rendimentos esperados</div><strong><Money value={totalIncome} /></strong><span className="metric-note">salários + subsídios</span></article><article className="metric-card"><div className="metric-label"><span className="dot orange" /> Despesas esperadas</div><strong><Money value={totalExpenses} /></strong><span className="metric-note">planeamento mensal conhecido</span></article><article className="metric-card"><div className="metric-label"><span className="dot purple" /> Disponível para Goals</div><strong><Money value={totalAvailable} /></strong><span className="metric-note">depois das regras mensais</span></article><article className="metric-card"><div className="metric-label"><span className="dot blue" /> Goals planeados</div><strong><Money value={totalPlannedGoals} /></strong><span className="metric-note">decisões no plano anual</span></article></section><section className="annual-layout"><article className="panel annual-panel"><div className="panel-heading"><div><p className="eyebrow">Planeamento anual</p><h2>Distribuição esperada pelos meses</h2></div><Link className="text-button" href="/month">Abrir mês →</Link></div><div className="annual-table"><div className="annual-row annual-header"><span>Goal</span>{monthNames.map((month) => <span key={month}>{month}</span>)}<span>Total</span></div>{state.configuration.goals.map((goal) => { const total = months.reduce((sum, month) => sum + goalAllocation(goal.id, month), 0); return <div className="annual-row" key={goal.id}><strong>{goal.name}</strong>{months.map((month) => <span key={month}>{goalAllocation(goal.id, month) ? <Money value={goalAllocation(goal.id, month)} /> : "–"}</span>)}<strong><Money value={total} /></strong></div>; })}</div></article><aside className="dashboard-side"><article className="panel side-panel"><p className="eyebrow">Estado do plano</p><h2>{totalPlannedGoals < totalAvailable ? "Há dinheiro por planear" : "Plano anual preenchido"}</h2><p>{totalPlannedGoals < totalAvailable ? <><Money value={totalAvailable - totalPlannedGoals} /> ainda não têm um destino definido.</> : "As disponibilidades conhecidas estão cobertas pelo plano."}</p><Link className="text-button" href="/month">Ajustar plano mensal →</Link></article><article className="panel side-panel"><p className="eyebrow">Próximo passo</p><h2>Atualizar despesas reais</h2><p>No final do mês, compara o planeado com o que realmente aconteceu.</p><Link className="text-button" href="/month">Inserir despesas →</Link></article></aside></section></main>;
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    Promise.all([entitiesClient.getItems(), entitiesClient.getMonthlyPlansByYear(year)]).then(([loadedItems, loadedPlans]) => {
+      if (!active) return;
+      setItems(loadedItems);
+      setPlans(loadedPlans);
+      setLoading(false);
+    }).catch((cause) => {
+      if (!active) return;
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar o dashboard.");
+      setLoading(false);
+    });
+    return () => { active = false; };
+  }, [year]);
+
+  const sortedItems = useMemo(() => [...items].sort((a, b) => a.categoryName.localeCompare(b.categoryName) || a.name.localeCompare(b.name)), [items]);
+  const chosenIds = (picked ?? sortedItems.map((item) => item.id)).filter((id) => sortedItems.some((item) => item.id === id));
+  const chosenItems = sortedItems.filter((item) => chosenIds.includes(item.id));
+  const rows = useMemo(() => buildDashboardRows(year, plans, chosenIds), [year, plans, chosenIds.join("|")]);
+
+  function toggleItem(id: string) {
+    setPicked((current) => {
+      const base = current ?? sortedItems.map((item) => item.id);
+      return base.includes(id) ? base.filter((item) => item !== id) : [...base, id];
+    });
+  }
+
+  const gridColumns = `120px repeat(${Math.max(chosenItems.length, 1)}, minmax(90px, 1fr)) 110px 110px 110px 90px`;
+
+  return (
+    <main className="shell">
+      <AppNav active="dashboard" />
+      <div className="page-heading">
+        <p className="eyebrow">Dashboard</p>
+        <h1>Valores actuais por mês</h1>
+        <p className="lede">Escolhe os itens a mostrar. Desvio = actual − planeado do mês inteiro (todos os itens). Meses sem plano aparecem vazios.</p>
+      </div>
+
+      <div className="month-controls">
+        <button className="month-arrow" onClick={() => setYear((current) => current - 1)} aria-label="Ano anterior">‹</button>
+        <span className="month-current">{year}</span>
+        <button className="month-arrow" onClick={() => setYear((current) => current + 1)} aria-label="Ano seguinte">›</button>
+      </div>
+
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {loading && <p className="form-note">A carregar…</p>}
+
+      {!loading && !error && <section className="settings-section">
+        <div className="section-title"><div><p className="eyebrow">Itens</p><h2>Itens mostrados</h2></div></div>
+        {!sortedItems.length && <p className="form-note">Ainda não há itens. Cria-os na página Categorias.</p>}
+        <div className="entity-action-buttons" style={{ flexWrap: "wrap" }}>
+          {sortedItems.map((item) => <label key={item.id} className="goal-chip">
+            <input type="checkbox" checked={chosenIds.includes(item.id)} onChange={() => toggleItem(item.id)} />
+            {item.name} <small>· {item.categoryName}{item.active ? "" : " (inativo)"}</small>
+          </label>)}
+        </div>
+      </section>}
+
+      {!loading && !error && sortedItems.length > 0 && <section className="settings-section">
+        <div className="section-title"><div><p className="eyebrow">{year}</p><h2>Meses × itens</h2></div></div>
+        {!chosenItems.length && <p className="form-note">Escolhe pelo menos um item para ver a tabela.</p>}
+        {chosenItems.length > 0 && <div className="annual-table">
+          <div className="category-table-row category-table-header" style={{ gridTemplateColumns: gridColumns, minWidth: 0 }}>
+            <span>Mês</span>
+            {chosenItems.map((item) => <span key={item.id}>{item.name}</span>)}
+            <span>Planeado</span>
+            <span>Actual</span>
+            <span>Desvio €</span>
+            <span>Desvio %</span>
+          </div>
+          {rows.map((row) => <div className="category-table-row" key={row.month} style={{ gridTemplateColumns: gridColumns, minWidth: 0 }}>
+            <strong>{monthLabel(row.month)}{!row.hasPlan && <small>Sem plano</small>}</strong>
+            {chosenItems.map((item) => <span key={item.id}>{row.actualByItem[item.id] === null || row.actualByItem[item.id] === undefined ? "" : <Money value={row.actualByItem[item.id]!} />}</span>)}
+            <span>{row.plannedTotal === null ? "" : <Money value={row.plannedTotal} />}</span>
+            <span>{row.actualTotal === null ? "" : <Money value={row.actualTotal} />}</span>
+            <span>{row.deviation === null ? "" : <Money value={row.deviation} />}</span>
+            <span>{percent(row.deviationPct)}</span>
+          </div>)}
+        </div>}
+      </section>}
+    </main>
+  );
 }

@@ -159,24 +159,6 @@ export function GoalMonthlyReview({ month }: { month: string }) {
     }
   }
 
-  // Tabela anual aplicável ao mês em revisão (para o preenchimento automático).
-  const applicableTemplate = templates.filter((item) => item.validFrom <= month).sort((a, b) => a.validFrom.localeCompare(b.validFrom)).at(-1) ?? null;
-
-  // Distribuição do disponível pela tabela (percentagens × disponível),
-  // com acerto de cêntimos na maior fatia.
-  function distributeByTemplate(): { goalId: string; planned: number }[] {
-    if (!plan || !applicableTemplate) return [];
-    const availableCents = Math.round(plan.availableAmount * 100);
-    const rows = plan.allocations.map((item) => {
-      const percentage = applicableTemplate.entries.find((entry) => entry.goalId === item.goalId)?.percentage ?? 0;
-      return { goalId: item.goalId, cents: Math.round(percentage / 100 * availableCents) };
-    });
-    const diff = availableCents - rows.reduce((sum, row) => sum + row.cents, 0);
-    const biggest = rows.reduce((winner, row, index) => (row.cents > (rows[winner]?.cents ?? -1) ? index : winner), 0);
-    if (rows[biggest]) rows[biggest].cents += diff;
-    return rows.map((row) => ({ goalId: row.goalId, planned: row.cents / 100 }));
-  }
-
   // Um só botão: grava reservados pendentes, grava o planeado e fecha o mês.
   // Planeado intocado e a zeros é preenchido pela tabela; o fecho também
   // recalcula os futuros meses abertos com a tabela aplicável.
@@ -202,17 +184,15 @@ export function GoalMonthlyReview({ month }: { month: string }) {
         await entitiesClient.updateGoalAllocation(plan.id, goalId, { actual: Number(raw) });
       }
       setActualDrafts({});
-      let toApply = editedPlanned;
-      let needsApply = plannedDirty;
-      if (Math.abs(plan.availableAmount - toApply.reduce((sum, item) => sum + item.planned, 0)) > 0.005) {
-        if (Object.keys(plannedDrafts).length > 0 || !applicableTemplate) {
-          throw new Error(`Falta distribuir ${euro(plan.availableAmount - toApply.reduce((sum, item) => sum + item.planned, 0))}. Ajusta o planeado (lápis) antes de fechar.`);
+      const missing = plan.availableAmount - editedPlanned.reduce((sum, item) => sum + item.planned, 0);
+      if (Math.abs(missing) > 0.005) {
+        // Sem edições manuais, a distribuição pela tabela é calculada e gravada no servidor.
+        if (Object.keys(plannedDrafts).length > 0) {
+          throw new Error(`Falta distribuir ${euro(missing)}. Ajusta o planeado (lápis) antes de fechar.`);
         }
-        toApply = distributeByTemplate();
-        needsApply = true;
-      }
-      if (needsApply) {
-        await entitiesClient.applyGoalAdjust(month, toApply);
+        await entitiesClient.applyGoalAdjustFromTemplate(month);
+      } else if (plannedDirty) {
+        await entitiesClient.applyGoalAdjust(month, editedPlanned);
       }
       await entitiesClient.closeGoalPlan(plan.id);
       setPlannedDrafts({});

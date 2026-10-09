@@ -33,7 +33,7 @@ export type PersonContribution = {
 };
 
 export type MonthContributions =
-  | { status: "ok"; contributionRequired: number; people: PersonContribution[] }
+  | { status: "ok"; contributionRequired: number; jointSurplus: number; people: PersonContribution[] }
   | { status: "no-income"; message: string };
 
 // Base = maior entre o planeado e o actual do mês.
@@ -61,7 +61,10 @@ export function calculateMonthContributions(input: {
     const personalActual = personalActualFor(input.entries, personId);
     return { personId, income, quota, personalActual, transferToJoint: Math.max(0, quota - personalActual), transferToPerson: Math.max(0, personalActual - quota) };
   });
-  return { status: "ok", contributionRequired, people };
+  // Lucro da conta conjunta (só exibição, como no Excel): base − total actual.
+  // Nunca é usado para cobrir défices; a conta conjunta não é consumida no cálculo.
+  const jointSurplus = Math.max(0, contributionRequired - actualTotal);
+  return { status: "ok", contributionRequired, jointSurplus, people };
 }
 
 // Template aplicável ao mês: o de validFrom mais recente que seja <= mês (null se não existir).

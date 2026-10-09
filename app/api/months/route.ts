@@ -7,7 +7,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const month = new URL(request.url).searchParams.get("month");
+    const params = new URL(request.url).searchParams;
+    const yearParam = params.get("year");
+    if (yearParam !== null) {
+      const year = Number(yearParam);
+      if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+        return NextResponse.json({ error: "Indica um ano válido (YYYY)." }, { status: 400 });
+      }
+      return NextResponse.json(await monthlyPlanRepository.listByYear(year));
+    }
+    const month = params.get("month");
     if (!isValidMonth(month)) return NextResponse.json({ error: "Indica um mês válido (YYYY-MM)." }, { status: 400 });
 
     const plan = await monthlyPlanRepository.findByMonth(month);

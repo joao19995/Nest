@@ -7,7 +7,7 @@ const NATCH = "natch";
 const JOINT_OWNER = null;
 
 function entry(overrides: Partial<MonthlyPlanEntryView> & Pick<MonthlyPlanEntryView, "planned" | "actual" | "accountOwnerPersonId">): MonthlyPlanEntryView {
-  return { id: Math.random().toString(36).slice(2), categoryId: "c", categoryName: "Categoria", categoryType: "VARIABLE", accountId: "a", accountName: "Conta", ...overrides };
+  return { id: Math.random().toString(36).slice(2), itemId: "i", itemName: "Item", itemActive: true, categoryId: "c", categoryName: "Categoria", categoryType: "VARIABLE", accountId: "a", accountName: "Conta", ...overrides };
 }
 
 const incomes: PersonIncome[] = [
@@ -178,6 +178,21 @@ describe("calculateMonthContributions", () => {
     expect(overResult.contributionRequired).toBeCloseTo(2500);
     expect(underResult.people.find((p) => p.personId === JOAO)!.transferToJoint).toBeCloseTo(1000);
     expect(overResult.people.find((p) => p.personId === JOAO)!.transferToJoint).toBeCloseTo(1250);
+  });
+
+  it("reports joint surplus as base minus actual, never negative, and does not change transfers", () => {
+    // Planeado 1500 (conjunta), actual 1480 → base 1500, lucro conjunta 20.
+    const jointOnly = plannedEntries.filter((item) => item.accountOwnerPersonId === JOINT_OWNER);
+    const under = calculateMonthContributions({ month: "2026-09", entries: jointOnly, personIds: [JOAO, NATCH], incomes });
+    if (under.status !== "ok") throw new Error("expected ok");
+    expect(under.jointSurplus).toBeCloseTo(20);
+    expect(under.people.find((p) => p.personId === JOAO)!.transferToJoint).toBeCloseTo(750);
+
+    // Actual acima do planeado → base = actual → lucro 0 (nunca negativo).
+    const over = [entry({ planned: 1000, actual: 1200, accountOwnerPersonId: JOINT_OWNER })];
+    const overResult = calculateMonthContributions({ month: "2026-09", entries: over, personIds: [JOAO, NATCH], incomes });
+    if (overResult.status !== "ok") throw new Error("expected ok");
+    expect(overResult.jointSurplus).toBe(0);
   });
 
   it("returns an explicit error instead of NaN or Infinity when there is no income", () => {

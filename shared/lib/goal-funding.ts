@@ -2,22 +2,12 @@ import { getPostgres } from "@/shared/lib/postgres";
 import { personRepository } from "@/shared/repositories/person-repository";
 import { categoryTemplateRepository } from "@/shared/repositories/category-template-repository";
 import { monthlyPlanRepository } from "@/shared/repositories/monthly-plan-repository";
-import { calculateAvailableForGoals } from "@/features/goals/domain/calculate-available-for-goals";
+import { computeMonthFunding, computeYearFunding, type FundingInput, type MonthFunding, type YearFunding } from "@/features/goals/domain/goal-funding";
 import type { PersonIncome } from "@/features/monthly-plan/domain/types";
 
-export type MonthFunding = {
-  month: string; // YYYY-MM
-  incomeNormal: number;
-  bonus: number;
-  dailyAllowance: number;
-  contributionRequired: number;
-  individualFixedTotal: number;
-  available: number;
-};
-
-function round2(value: number) {
-  return Math.round(value * 100) / 100;
-}
+// Carregamento dos dados do disponível para objetivos. O cálculo está em
+// features/goals/domain/goal-funding.ts. Cada pedido lê pessoas, rendimentos,
+// planos e templates uma única vez, para qualquer número de meses.
 
 async function loadIncomes(): Promise<PersonIncome[]> {
   const sql = getPostgres();
@@ -27,44 +17,23 @@ async function loadIncomes(): Promise<PersonIncome[]> {
   return rows.map((row) => ({ id: row.id, personId: row.person_id, amount: Number(row.amount), validFrom: row.valid_from }));
 }
 
-// Contribuição do mês: total planeado do monthly_plan (valores predefinidos),
-// ou total do template aplicável quando o mês ainda não existe.
-// O actual do mês é independente: nunca altera o disponível para objetivos.
-async function contributionFor(month: string): Promise<number> {
-  const plan = await monthlyPlanRepository.findByMonth(month);
-  if (plan && plan.entries.length) {
-    return plan.entries.reduce((total, entry) => total + entry.planned, 0);
-  }
-  const template = await categoryTemplateRepository.findApplicable(month);
-  if (!template) return 0;
-  return template.entries.filter((entry) => entry.active).reduce((total, entry) => total + entry.expectedAmount, 0);
+async function loadFundingInput(plans: FundingInput["plans"]): Promise<FundingInput> {
+  const [people, incomes, templates] = await Promise.all([
+    personRepository.findAll(),
+    loadIncomes(),
+    categoryTemplateRepository.findAll(),
+  ]);
+  return { people, incomes, plans, templates };
 }
+
+export type { MonthFunding, YearFunding };
 
 export async function getMonthFunding(month: string): Promise<MonthFunding> {
-  const people = await personRepository.findAll();
-  const incomes = await loadIncomes();
-  const individualFixedTotal = people.reduce((total, person) => total + (person.individualFixedAmount ?? 0), 0);
-  const result = calculateAvailableForGoals({
-    month,
-    incomes,
-    people: people.map((person) => ({ personId: person.id, dailySpendingPercentage: person.dailySpendingPercentage })),
-    contributionRequired: await contributionFor(month),
-    individualFixedTotal,
-  });
-  return { month, incomeNormal: result.incomeNormal, bonus: result.bonus, dailyAllowance: result.dailyAllowance, contributionRequired: result.contributionRequired, individualFixedTotal: result.individualFixedTotal, available: round2(result.available) };
+  const plan = await monthlyPlanRepository.findByMonth(month);
+  return computeMonthFunding(month, await loadFundingInput(plan ? [plan] : []));
 }
 
-export type YearFunding = {
-  year: number;
-  months: MonthFunding[];
-  annualTotal: number;
-};
-
 export async function getYearFunding(year: number): Promise<YearFunding> {
-  const months: MonthFunding[] = [];
-  for (let index = 1; index <= 12; index += 1) {
-    const month = `${year}-${String(index).padStart(2, "0")}`;
-    months.push(await getMonthFunding(month));
-  }
-  return { year, months, annualTotal: round2(months.reduce((total, item) => total + item.available, 0)) };
+  const plans = await monthlyPlanRepository.listByYear(year);
+  return computeYearFunding(year, await loadFundingInput(plans));
 }
