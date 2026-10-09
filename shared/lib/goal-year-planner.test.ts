@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildYearSeeds, computeAdjustRecalc } from "./goal-year-planner";
+import { buildYearSeeds, computeAdjustRecalc, previewTemplateChange } from "./goal-year-planner";
 import type { GoalTemplate } from "../../features/goals/domain/goal-template";
 
 const templateJan: GoalTemplate = {
@@ -114,5 +114,109 @@ describe("computeAdjustRecalc", () => {
     });
     expect(toApply.map((item) => item.planId)).toEqual(["p2"]);
     expect(futureChanges).toEqual([]);
+  });
+
+  it("identifica meses fechados que ficam inalterados", () => {
+    const { closedSkipped, toApply } = computeAdjustRecalc({
+      targetMonth: "2026-02",
+      targetAvailable: 1000,
+      targetAllocations: [{ goalId: "a", planned: 600 }, { goalId: "b", planned: 400 }],
+      storedPlans: [
+        ...storedPlans,
+        { planId: "p4", month: "2026-04", availableAmount: 1000, closed: true, allocations: [{ goalId: "a", planned: 600 }, { goalId: "b", planned: 400 }] },
+      ],
+      fundingByMonth: new Map([["2026-02", 1000], ["2026-03", 1000], ["2026-04", 2000]]),
+      templates: [templateJan],
+    });
+    expect(closedSkipped).toEqual(["2026-04"]);
+    expect(toApply.map((item) => item.planId)).not.toContain("p4");
+  });
+});
+
+describe("previewTemplateChange", () => {
+  const storedPlans = [
+    { planId: "p1", month: "2026-01", availableAmount: 1000, closed: true, allocations: [{ goalId: "a", planned: 600 }, { goalId: "b", planned: 400 }] },
+    { planId: "p2", month: "2026-02", availableAmount: 1000, closed: false, allocations: [{ goalId: "a", planned: 600 }, { goalId: "b", planned: 400 }] },
+    { planId: "p8", month: "2026-08", availableAmount: 1000, closed: false, allocations: [{ goalId: "a", planned: 600 }, { goalId: "b", planned: 400 }] },
+    { planId: "p9", month: "2026-09", availableAmount: 1000, closed: true, allocations: [{ goalId: "a", planned: 500 }, { goalId: "b", planned: 500 }] },
+  ];
+  const fundingByMonth = new Map([
+    ["2026-01", 1000],
+    ["2026-02", 1000],
+    ["2026-08", 1000],
+    ["2026-09", 1000],
+  ]);
+
+  it("nova versao futura so afeta meses abertos no seu alcance", () => {
+    const preview = previewTemplateChange({
+      validFrom: "2026-07",
+      proposedEntries: [
+        { goalId: "a", percentage: 50 },
+        { goalId: "b", percentage: 50 },
+      ],
+      storedPlans,
+      fundingByMonth,
+      templates: [templateJan],
+    });
+    // Fevereiro (anterior à versão) intacto; agosto recalculado; setembro fechado listado.
+    expect(preview.affected.map((item) => item.month)).toEqual(["2026-08"]);
+    expect(preview.affected[0].after).toEqual([
+      { goalId: "a", planned: 500 },
+      { goalId: "b", planned: 500 },
+    ]);
+    expect(preview.closedSkipped).toEqual(["2026-09"]);
+    expect(preview.missingMonths).toEqual([]);
+  });
+
+  it("meses fechados nunca aparecem como afetados", () => {
+    const preview = previewTemplateChange({
+      validFrom: "2026-01",
+      proposedEntries: [
+        { goalId: "a", percentage: 100 },
+        { goalId: "b", percentage: 0 },
+      ],
+      storedPlans,
+      fundingByMonth,
+      templates: [templateJan],
+    });
+    expect(preview.affected.map((item) => item.month)).not.toContain("2026-01");
+    expect(preview.affected.map((item) => item.month)).not.toContain("2026-09");
+    expect(preview.closedSkipped).toEqual(["2026-01", "2026-09"]);
+  });
+
+  it("resolve a versao correta por mes com multiplas versoes", () => {
+    const preview = previewTemplateChange({
+      validFrom: "2026-07",
+      proposedEntries: [
+        { goalId: "a", percentage: 50 },
+        { goalId: "b", percentage: 50 },
+      ],
+      storedPlans,
+      fundingByMonth,
+      templates: [templateJan, templateJul],
+      replacedId: "t2",
+      proposedId: "t2",
+    });
+    // Agosto e governado pela versao de julho (50/50), nao pela de janeiro:
+    // o stored 600/400 aparece como afetado para 500/500. Fevereiro, regido
+    // pela versao de janeiro, fica intacto.
+    expect(preview.affected.map((item) => item.month)).toEqual(["2026-08"]);
+    expect(preview.affected[0].after).toEqual([
+      { goalId: "a", planned: 500 },
+      { goalId: "b", planned: 500 },
+    ]);
+    expect(preview.closedSkipped).toEqual(["2026-09"]);
+  });
+
+  it("e so leitura: nao altera os planos guardados nem as tabelas", () => {
+    const snapshot = JSON.stringify({ storedPlans, templates: [templateJan, templateJul] });
+    previewTemplateChange({
+      validFrom: "2026-07",
+      proposedEntries: [{ goalId: "a", percentage: 50 }, { goalId: "b", percentage: 50 }],
+      storedPlans,
+      fundingByMonth,
+      templates: [templateJan, templateJul],
+    });
+    expect(JSON.stringify({ storedPlans, templates: [templateJan, templateJul] })).toBe(snapshot);
   });
 });

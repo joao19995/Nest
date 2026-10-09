@@ -46,6 +46,14 @@ type Preview = {
   newAllocations: { goalId: string; planned: number }[];
   futureChanges: FutureChange[];
   missingMonths: string[];
+  closedSkipped: string[];
+};
+
+type TemplatePreview = {
+  validFrom: string;
+  affected: FutureChange[];
+  closedSkipped: string[];
+  missingMonths: string[];
 };
 
 export function GoalsPage() {
@@ -64,6 +72,8 @@ export function GoalsPage() {
   const [templateEditing, setTemplateEditing] = useState(false);
   const [templateError, setTemplateError] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [templatePreview, setTemplatePreview] = useState<TemplatePreview | null>(null);
+  const [templatePreviewBusy, setTemplatePreviewBusy] = useState(false);
   const [inspectedVersion, setInspectedVersion] = useState<string | null>(null);
 
   // Painel B — gestão de objetivos (modal como nas categorias).
@@ -151,6 +161,7 @@ export function GoalsPage() {
 
   function openTemplateEditor() {
     setTemplateError("");
+    setTemplatePreview(null);
     const base = existingTemplate
       ?? templates.filter((item) => item.validFrom <= templateDate).sort((a, b) => a.validFrom.localeCompare(b.validFrom)).at(-1)
       ?? null;
@@ -161,7 +172,9 @@ export function GoalsPage() {
     setTemplateEditing(true);
   }
 
-  async function saveTemplate() {
+  // Antevisão só de leitura: mostra os meses abertos afetados e os meses
+  // fechados que ficam intactos. A gravação exige confirmação explícita.
+  async function previewTemplate() {
     setTemplateError("");
     if (!MONTH_PATTERN.test(templateDate)) {
       setTemplateError("Indica um mês de início válido (YYYY-MM).");
@@ -172,6 +185,32 @@ export function GoalsPage() {
       return;
     }
     const annualTotal = yearFunding?.annualTotal ?? 0;
+    setTemplatePreviewBusy(true);
+    try {
+      const result = existingTemplate
+        ? await entitiesClient.previewGoalTemplateUpdate(existingTemplate.id, { annualTotal, entries: templateRows })
+        : await entitiesClient.previewGoalTemplate({ validFrom: templateDate, annualTotal, entries: templateRows });
+      setTemplatePreview({ validFrom: result.validFrom, affected: result.affected as FutureChange[], closedSkipped: result.closedSkipped, missingMonths: result.missingMonths });
+    } catch (cause) {
+      setTemplatePreview(null);
+      setTemplateError(cause instanceof Error ? cause.message : "Não foi possível pré-visualizar a tabela.");
+    } finally {
+      setTemplatePreviewBusy(false);
+    }
+  }
+
+  async function saveTemplate() {
+    setTemplateError("");
+    if (!templatePreview) {
+      setTemplateError("Pré-visualiza a tabela antes de guardar.");
+      return;
+    }
+    if (!window.confirm(
+      existingTemplate
+        ? `Guardar a versão com efeito a partir de ${templatePreview.validFrom} e recalcular os meses abertos afetados?`
+        : `Criar uma nova versão com efeito a partir de ${templatePreview.validFrom} e pré-calcular o ano?`,
+    )) return;
+    const annualTotal = yearFunding?.annualTotal ?? 0;
     setTemplateSaving(true);
     try {
       if (existingTemplate) {
@@ -181,9 +220,12 @@ export function GoalsPage() {
       }
       setTemplateEditing(false);
       setTemplateRows([]);
+      setTemplatePreview(null);
       await reloadCatalog();
       await reloadYear(year);
     } catch (cause) {
+      // Sem estado parcial enganador: se a gravação falhar, o editor
+      // continua aberto com os valores para corrigir e tentar de novo.
       setTemplateError(cause instanceof Error ? cause.message : "Não foi possível guardar o template.");
     } finally {
       setTemplateSaving(false);
@@ -528,6 +570,9 @@ export function GoalsPage() {
               {preview && preview.missingMonths.length > 0 && (
                 <p className="form-note">Sem tabela aplicável (não alterados): {preview.missingMonths.join(", ")}.</p>
               )}
+              {preview && preview.closedSkipped.length > 0 && (
+                <p className="form-note">Fechados (não mudam): {preview.closedSkipped.map(displayMonth).join(", ")}.</p>
+              )}
             </>
           )}
         </section>
@@ -538,12 +583,14 @@ export function GoalsPage() {
         <div className="section-title">
           <div><p className="eyebrow">Template anual</p><h2>Distribuição em percentagem</h2></div>
           <div className="entity-action-buttons">
-            <label className="template-date">Aplicável a partir de <input type="month" value={templateDate} onChange={(event) => { if (MONTH_PATTERN.test(event.target.value)) setTemplateDate(event.target.value); }} /></label>
+            <label className="template-date">Aplicável a partir de <input type="month" value={templateDate} onChange={(event) => { if (MONTH_PATTERN.test(event.target.value)) { setTemplateDate(event.target.value); setTemplatePreview(null); } }} /></label>
             <button className="secondary-button" onClick={openTemplateEditor} disabled={!goals.length}>Editar tabela</button>
           </div>
         </div>
         <p className="form-note">
-          As percentagens têm de somar 100%. Guardar {existingTemplate ? "atualiza essa versão" : `cria uma nova versão a partir de ${templateDate}`} e pré-calcula o ano; meses fechados nunca mudam.
+          As percentagens têm de somar 100%. {existingTemplate
+            ? "Esta data já tem uma versão: só pode ser editada se ainda não for usada por nenhum mês planeado — caso contrário, escolhe outro mês para criar uma nova versão."
+            : `Guardar cria uma nova versão com efeito a partir de ${templateDate} e pré-calcula o ano; meses fechados nunca mudam.`} A gravação exige antevisão e confirmação.
         </p>
         {templates.length > 0 && (
           <div className="category-table">
@@ -589,16 +636,44 @@ export function GoalsPage() {
                   <strong>{goalName(row.goalId)}</strong>
                   <span><input aria-label={`Percentagem de ${goalName(row.goalId)}`} type="number" min="0" max="100" step="0.01"
                     value={row.percentage}
-                    onChange={(event) => setTemplateRows((current) => current.map((item) => (item.goalId === row.goalId ? { ...item, percentage: Number(event.target.value) } : item)))} /></span>
+                    onChange={(event) => { setTemplateRows((current) => current.map((item) => (item.goalId === row.goalId ? { ...item, percentage: Number(event.target.value) } : item))); setTemplatePreview(null); }} /></span>
                 </div>
               ))}
             </div>
             {templateError && <p className="form-error" role="alert">{templateError}</p>}
+            {templatePreview && (
+              <>
+                <p className="form-note">
+                  Antevisão a partir de {templatePreview.validFrom}: {templatePreview.affected.length} mês(meses) abertos vão mudar.
+                </p>
+                {templatePreview.affected.length > 0 && (
+                  <div className="category-table">
+                    <div className="category-table-row category-table-header"><span>Mês</span><span>Antes</span><span>Depois</span></div>
+                    {templatePreview.affected.map((change) => (
+                      <div className="category-table-row" key={change.month}>
+                        <strong>{displayMonth(change.month)}</strong>
+                        <span>{euro(change.before.reduce((sum, entry) => sum + entry.planned, 0))}</span>
+                        <span>{euro(change.after.reduce((sum, entry) => sum + entry.planned, 0))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {templatePreview.closedSkipped.length > 0 && (
+                  <p className="form-note">Fechados (não mudam): {templatePreview.closedSkipped.map(displayMonth).join(", ")}.</p>
+                )}
+                {templatePreview.missingMonths.length > 0 && (
+                  <p className="form-note">Sem tabela aplicável (não alterados): {templatePreview.missingMonths.join(", ")}.</p>
+                )}
+              </>
+            )}
             <div className="editor-actions">
-              <button className="save-button" onClick={() => void saveTemplate()} disabled={templateSaving || !templateValid}>
-                {templateSaving ? "A guardar…" : existingTemplate ? "Guardar versão (100%)" : "Criar versão (100%)"}
+              <button className="secondary-button" onClick={() => void previewTemplate()} disabled={templatePreviewBusy || !templateValid}>
+                {templatePreviewBusy ? "A pré-visualizar…" : "Pré-visualizar"}
               </button>
-              <button className="secondary-button" onClick={() => { setTemplateEditing(false); setTemplateRows([]); }}>Cancelar</button>
+              <button className="save-button" onClick={() => void saveTemplate()} disabled={templateSaving || !templateValid || !templatePreview}>
+                {templateSaving ? "A guardar…" : existingTemplate ? "Confirmar edição da versão" : "Confirmar nova versão"}
+              </button>
+              <button className="secondary-button" onClick={() => { setTemplateEditing(false); setTemplateRows([]); setTemplatePreview(null); }}>Cancelar</button>
             </div>
           </>
         )}

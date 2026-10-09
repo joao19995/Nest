@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { TransactionSql } from "postgres";
 import { getPostgres } from "@/shared/lib/postgres";
 
 export type GoalPlanAllocationView = {
@@ -28,7 +29,52 @@ type AllocationRow = {
 
 export type UpdateAllocationResult = "ok" | "closed" | "not_found";
 export type CloseResult = "ok" | "already_closed" | "not_found";
-export type BulkApplyError = { code: "closed" | "not_found"; planId: string };
+export type BulkApplyError = { code: "closed" | "not_found" | "invalid_total"; planId: string };
+
+function toCents(value: number): number {
+  return Math.round(value * 100);
+}
+
+/** Transação postgres (a mesma que sql.begin entrega ao callback). */
+type Transaction = TransactionSql<Record<string, never>>;
+
+/**
+ * Sincroniza o conjunto completo de alocações de um mês dentro da transação
+ * dada (tem de ser chamada com a linha do mês já bloqueada por FOR UPDATE
+ * e com o mês confirmado como aberto).
+ *
+ * - Upsert das alocações calculadas (só o planeado muda; o atual é preservado).
+ * - Linhas guardadas que já não fazem parte do cálculo ficam com
+ *   planeado = 0, mantendo o atual e o histórico. Nunca são apagadas.
+ * - A soma do planeado tem de igualar o disponível ao cêntimo; caso
+ *   contrário lança BulkApplyError (invalid_total) e a transação aborta
+ *   sem gravar nenhum mês (sem planos parciais).
+ */
+export async function syncMonthAllocations(
+  transaction: Transaction,
+  planId: string,
+  availableAmount: number,
+  allocations: { goalId: string; planned: number }[],
+): Promise<void> {
+  const plannedCents = allocations.reduce((sum, item) => sum + toCents(item.planned), 0);
+  if (plannedCents !== toCents(availableAmount)) {
+    throw { code: "invalid_total", planId } satisfies BulkApplyError;
+  }
+  for (const allocation of allocations) {
+    await transaction`
+      INSERT INTO goal_allocation (id, plan_month_id, goal_id, planned, actual)
+      VALUES (${randomUUID()}, ${planId}, ${allocation.goalId}, ${allocation.planned}, 0)
+      ON CONFLICT (plan_month_id, goal_id)
+      DO UPDATE SET planned = EXCLUDED.planned
+    `;
+  }
+  const goalIds = allocations.map((allocation) => allocation.goalId);
+  if (goalIds.length) {
+    await transaction`UPDATE goal_allocation SET planned = 0 WHERE plan_month_id = ${planId} AND goal_id <> ALL(${goalIds}::uuid[])`;
+  } else {
+    await transaction`UPDATE goal_allocation SET planned = 0 WHERE plan_month_id = ${planId}`;
+  }
+}
 
 function toView(plan: PlanRow, rows: AllocationRow[]): GoalPlanView {
   return {
@@ -146,47 +192,53 @@ export class GoalPlanRepository {
     return "not_found";
   }
 
-  async updateAllocation(planId: string, goalId: string, input: { planned?: number; actual?: number }): Promise<UpdateAllocationResult> {    const sql = getPostgres();
+  async updateAllocation(planId: string, goalId: string, input: { planned?: number; actual?: number }): Promise<UpdateAllocationResult> {
+    const sql = getPostgres();
     const { planned, actual } = input;
     if (planned === undefined && actual === undefined) return "ok";
-    // Condição closed = FALSE no JOIN impede qualquer escrita em mês fechado.
-    if (planned !== undefined && actual !== undefined) {
-      const updated = await sql<{ id: string }[]>`
-        UPDATE goal_allocation a SET planned = ${planned}, actual = ${actual}
-        FROM goal_plan_month m
-        WHERE a.plan_month_id = ${planId} AND a.goal_id = ${goalId} AND m.id = a.plan_month_id AND m.closed = FALSE
-        RETURNING a.id
+    // A verificação de mês fechado acontece DENTRO da transação, DEPOIS de
+    // bloquear a linha do mês (FOR UPDATE): a mesma ordem de bloqueio usada
+    // pelo recálculo em massa e pelo fecho, por isso atualizações e fechos
+    // concorrentes sincronizam na mesma linha e nunca há escrita pós-fecho.
+    return sql.begin(async (transaction) => {
+      const plans = await transaction<{ closed: boolean }[]>`
+        SELECT closed FROM goal_plan_month WHERE id = ${planId} FOR UPDATE
       `;
-      if (updated.length) return "ok";
-    } else if (planned !== undefined) {
-      const updated = await sql<{ id: string }[]>`
-        UPDATE goal_allocation a SET planned = ${planned}
-        FROM goal_plan_month m
-        WHERE a.plan_month_id = ${planId} AND a.goal_id = ${goalId} AND m.id = a.plan_month_id AND m.closed = FALSE
-        RETURNING a.id
+      if (!plans.length) return "not_found";
+      if (plans[0].closed) return "closed";
+      if (planned !== undefined && actual !== undefined) {
+        const updated = await transaction<{ id: string }[]>`
+          UPDATE goal_allocation SET planned = ${planned}, actual = ${actual}
+          WHERE plan_month_id = ${planId} AND goal_id = ${goalId}
+          RETURNING id
+        `;
+        return updated.length ? "ok" : "not_found";
+      }
+      if (planned !== undefined) {
+        const updated = await transaction<{ id: string }[]>`
+          UPDATE goal_allocation SET planned = ${planned}
+          WHERE plan_month_id = ${planId} AND goal_id = ${goalId}
+          RETURNING id
+        `;
+        return updated.length ? "ok" : "not_found";
+      }
+      const updated = await transaction<{ id: string }[]>`
+        UPDATE goal_allocation SET actual = ${actual as number}
+        WHERE plan_month_id = ${planId} AND goal_id = ${goalId}
+        RETURNING id
       `;
-      if (updated.length) return "ok";
-    } else {
-      const value = actual as number;
-      const updated = await sql<{ id: string }[]>`
-        UPDATE goal_allocation a SET actual = ${value}
-        FROM goal_plan_month m
-        WHERE a.plan_month_id = ${planId} AND a.goal_id = ${goalId} AND m.id = a.plan_month_id AND m.closed = FALSE
-        RETURNING a.id
-      `;
-      if (updated.length) return "ok";
-    }
-    const [plan] = await sql<{ closed: boolean }[]>`SELECT closed FROM goal_plan_month WHERE id = ${planId}`;
-    if (!plan) return "not_found";
-    if (plan.closed) return "closed";
-    return "not_found";
+      return updated.length ? "ok" : "not_found";
+    });
   }
 
   /**
    * Aplica vários meses numa única transação: ou todos são gravados ou
    * nenhum é (sem cadeias de alterações parciais). Cada mês é bloqueado
    * (FOR UPDATE) e meses fechados abortam a operação inteira sem tocar em
-   * nenhum dado. Lança BulkApplyError com o planId problemático.
+   * nenhum dado. Cada mês tem o conjunto COMPLETO sincronizado (linhas
+   * obsoletas ficam a planeado zero, com o atual preservado) e a soma do
+   * planeado é validada ao cêntimo. Lança BulkApplyError com o planId
+   * problemático.
    */
   async applyMonthsAtomic(
     items: { planId: string; availableAmount: number; allocations: { goalId: string; planned: number }[] }[],
@@ -200,14 +252,7 @@ export class GoalPlanRepository {
         if (!plan) throw { code: "not_found", planId: item.planId } satisfies BulkApplyError;
         if (plan.closed) throw { code: "closed", planId: item.planId } satisfies BulkApplyError;
         await transaction`UPDATE goal_plan_month SET available_amount = ${item.availableAmount} WHERE id = ${item.planId}`;
-        for (const allocation of item.allocations) {
-          await transaction`
-            INSERT INTO goal_allocation (id, plan_month_id, goal_id, planned, actual)
-            VALUES (${randomUUID()}, ${item.planId}, ${allocation.goalId}, ${allocation.planned}, 0)
-            ON CONFLICT (plan_month_id, goal_id)
-            DO UPDATE SET planned = EXCLUDED.planned
-          `;
-        }
+        await syncMonthAllocations(transaction, item.planId, item.availableAmount, item.allocations);
       }
     });
   }
@@ -216,6 +261,9 @@ export class GoalPlanRepository {
    * Garante os 12 meses do ano e (re)calcula os meses abertos numa única
    * transação. Meses fechados nunca são tocados: nem o available nem as
    * alocações. Meses em falta são criados já com a alocação calculada.
+   * Meses abertos têm o conjunto completo sincronizado (obsoletos a zero,
+   * atual preservado) e o total validado ao cêntimo; um mês inválido
+   * aborta a transação inteira em vez de gravar um plano parcial.
    */
   async ensureYearPlansAtomic(
     year: number,
@@ -235,25 +283,29 @@ export class GoalPlanRepository {
         `;
         if (!plan || plan.closed) continue;
         await transaction`UPDATE goal_plan_month SET available_amount = ${seed.availableAmount} WHERE id = ${plan.id}`;
-        for (const allocation of seed.allocations) {
-          await transaction`
-            INSERT INTO goal_allocation (id, plan_month_id, goal_id, planned, actual)
-            VALUES (${randomUUID()}, ${plan.id}, ${allocation.goalId}, ${allocation.planned}, 0)
-            ON CONFLICT (plan_month_id, goal_id)
-            DO UPDATE SET planned = EXCLUDED.planned
-          `;
-        }
+        await syncMonthAllocations(transaction, plan.id, seed.availableAmount, seed.allocations);
       }
     });
   }
 
+  /**
+   * Fecha um mês. A linha é bloqueada (FOR UPDATE) antes de validar o
+   * estado, dentro da transação — a mesma ordem de bloqueio do recálculo —
+   * por isso fechos e atualizações concorrentes sincronizam na mesma linha
+   * e um mês fechado nunca volta a mudar. Idempotente: fechar um mês já
+   * fechado devolve "already_closed" sem alterar nada.
+   */
   async close(planId: string): Promise<CloseResult> {
     const sql = getPostgres();
-    const closed = await sql<{ id: string }[]>`UPDATE goal_plan_month SET closed = TRUE WHERE id = ${planId} AND closed = FALSE RETURNING id`;
-    if (closed.length) return "ok";
-    const [plan] = await sql<{ closed: boolean }[]>`SELECT closed FROM goal_plan_month WHERE id = ${planId}`;
-    if (!plan) return "not_found";
-    return "already_closed";
+    return sql.begin(async (transaction) => {
+      const [plan] = await transaction<{ closed: boolean }[]>`
+        SELECT closed FROM goal_plan_month WHERE id = ${planId} FOR UPDATE
+      `;
+      if (!plan) return "not_found";
+      if (plan.closed) return "already_closed";
+      await transaction`UPDATE goal_plan_month SET closed = TRUE WHERE id = ${planId}`;
+      return "ok";
+    });
   }
 }
 

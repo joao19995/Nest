@@ -19,6 +19,71 @@ export class AllocationError extends Error {
   }
 }
 
+/** Soma em cêntimos, para comparar totais sem erros de vírgula flutuante. */
+export function toCents(value: number): number {
+  return Math.round(value * 100);
+}
+
+/**
+ * Garante que a soma das alocações iguala o disponível ao cêntimo.
+ * Lança AllocationError (INVALID_TOTAL) quando diverge — nesse caso o
+ * chamador deve abortar a transação em vez de gravar um plano parcial.
+ */
+export function assertAllocationsTotal(
+  allocations: Pick<AllocatedGoal, "planned">[],
+  availableAmount: number,
+): void {
+  const plannedCents = allocations.reduce((sum, item) => sum + toCents(item.planned), 0);
+  if (plannedCents !== toCents(availableAmount)) {
+    throw new AllocationError(
+      "INVALID_TOTAL",
+      `A soma das alocações tem de igualar o disponível (${availableAmount.toFixed(2)} €).`,
+    );
+  }
+}
+
+export type StoredAllocation = {
+  goalId: string;
+  planned: number;
+  actual: number;
+};
+
+/**
+ * Sincronização pura do conjunto completo de alocações de um mês.
+ *
+ * Regra de integridade: cada recálculo sincroniza TODAS as linhas do mês.
+ * - Objetivos incluídos no cálculo ficam com o planeado calculado (o
+ *   reservado/atual é sempre preservado).
+ * - Objetivos com linhas guardadas que já não fazem parte do cálculo
+ *   (removidos da tabela ou objetivo desativado) ficam com planeado = 0,
+ *   mantendo o atual e o histórico. Nunca são apagados fisicamente.
+ *
+ * Sem isto, uma linha obsoleta (ex.: Holidays com 400 €) somaria ao novo
+ * total (ex.: Savings com 1000 €) e o mês fecharia em 1400 € em vez de
+ * 1000 €. A implementação SQL em goal-plan-repository aplica exatamente
+ * esta regra dentro da mesma transação do recálculo.
+ */
+export function syncStoredAllocations(input: {
+  stored: StoredAllocation[];
+  incoming: AllocatedGoal[];
+}): StoredAllocation[] {
+  const incomingByGoal = new Map(input.incoming.map((item) => [item.goalId, item.planned]));
+  const storedByGoal = new Map(input.stored.map((item) => [item.goalId, item]));
+  const result: StoredAllocation[] = [];
+  // Primeiro as entradas do cálculo (ordem do template), depois as
+  // obsoletas zeradas por goalId para determinismo.
+  for (const item of input.incoming) {
+    result.push({ goalId: item.goalId, planned: item.planned, actual: storedByGoal.get(item.goalId)?.actual ?? 0 });
+  }
+  const obsolete = input.stored
+    .filter((item) => !incomingByGoal.has(item.goalId))
+    .sort((a, b) => (a.goalId < b.goalId ? -1 : a.goalId > b.goalId ? 1 : 0));
+  for (const item of obsolete) {
+    result.push({ goalId: item.goalId, planned: 0, actual: item.actual });
+  }
+  return result;
+}
+
 /**
  * Deterministic monthly allocation: every cent of the available amount is
  * distributed across the template goals, so the planned values always sum

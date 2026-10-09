@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { isValidMonth } from "@/shared/lib/category-template-validation";
 import { isValidTemplateTotal } from "@/features/goals/domain/goal-template";
 import type { GoalTemplateEntry } from "@/features/goals/domain/goal-template";
-import { goalTemplateRepository } from "@/shared/repositories/goal-template-repository";
+import { goalTemplateRepository, GoalTemplateVersionError } from "@/shared/repositories/goal-template-repository";
 import { goalPlanRepository } from "@/shared/repositories/goal-plan-repository";
+import { goalRepository } from "@/shared/repositories/goal-repository";
 import { getYearFunding } from "@/shared/lib/goal-funding";
-import { buildYearSeeds } from "@/shared/lib/goal-year-planner";
+import { buildYearSeeds, previewTemplateChange } from "@/shared/lib/goal-year-planner";
 import { isUuid } from "@/shared/lib/uuid";
 
 export const runtime = "nodejs";
@@ -29,19 +30,23 @@ export function parseGoalTemplateEntries(value: unknown): { entries: GoalTemplat
   return { entries };
 }
 
-// Depois de gravar uma versão, pré-calcula o ano: cria os meses em falta e
-// recalcula os meses abertos com o template aplicável a cada mês. Os meses
-// fechados nunca são tocados (garantido no repositório, na transação).
-async function precalculateYear(validFrom: string) {
-  const year = Number(validFrom.slice(0, 4));
-  const funding = await getYearFunding(year);
-  const templates = await goalTemplateRepository.findAll();
-  const { seeds } = buildYearSeeds({
-    year,
-    funding: funding.months.map((item) => ({ month: item.month, available: item.available })),
-    templates,
-  });
-  if (seeds.length) await goalPlanRepository.ensureYearPlansAtomic(year, seeds);
+/** As entradas só podem referir objetivos ativos (P3: sem reintroduzir inativos). */
+async function validateActiveGoals(entries: GoalTemplateEntry[]): Promise<string | null> {
+  const active = await goalRepository.list();
+  const activeIds = new Set(active.map((goal) => goal.id));
+  const unknown = entries.find((entry) => !activeIds.has(entry.goalId));
+  if (unknown) {
+    return "A tabela refere um objetivo inexistente ou desativado. Reativa o objetivo ou remove-o da tabela.";
+  }
+  return null;
+}
+
+function versionErrorResponse(error: unknown) {
+  if (error instanceof GoalTemplateVersionError) {
+    const status = error.code === "duplicate_valid_from" ? 409 : 400;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+  return null;
 }
 
 export async function GET(request: Request) {
@@ -60,19 +65,67 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { validFrom?: unknown; annualTotal?: unknown; entries?: unknown };
+    const body = (await request.json()) as { validFrom?: unknown; annualTotal?: unknown; entries?: unknown; dryRun?: unknown };
     if (!isValidMonth(body.validFrom)) return NextResponse.json({ error: "Indica um mês de início válido (YYYY-MM)." }, { status: 400 });
     if (typeof body.annualTotal !== "number" || !Number.isFinite(body.annualTotal) || body.annualTotal < 0) {
       return NextResponse.json({ error: "O valor anual deve ser um número não negativo." }, { status: 400 });
     }
     const parsed = parseGoalTemplateEntries(body.entries);
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    const inactiveError = await validateActiveGoals(parsed.entries);
+    if (inactiveError) return NextResponse.json({ error: inactiveError }, { status: 400 });
     if (await goalTemplateRepository.findByValidFrom(body.validFrom)) {
-      return NextResponse.json({ error: `Já existe um template a partir de ${body.validFrom}. Atualiza esse template.` }, { status: 409 });
+      return NextResponse.json({ error: `Já existe uma versão com efeito a partir de ${body.validFrom}. Se ainda não for usada por nenhum mês, edita-a; senão escolhe outro mês para a nova versão.` }, { status: 409 });
     }
-    const created = await goalTemplateRepository.create(body.validFrom, body.annualTotal, parsed.entries);
-    await precalculateYear(body.validFrom);
-    return NextResponse.json(created, { status: 201 });
+
+    const year = Number((body.validFrom as string).slice(0, 4));
+    const [funding, templates, yearPlans] = await Promise.all([
+      getYearFunding(year),
+      goalTemplateRepository.findAll(),
+      goalPlanRepository.listByYear(year),
+    ]);
+    const fundingByMonth = new Map(funding.months.map((item) => [item.month, item.available]));
+
+    // Antevisão só de leitura: valida e mostra o efeito sem escrever nada.
+    if (body.dryRun === true) {
+      const preview = previewTemplateChange({
+        validFrom: body.validFrom as string,
+        proposedEntries: parsed.entries,
+        storedPlans: yearPlans.map((item) => ({
+          planId: item.id,
+          month: item.month,
+          availableAmount: item.availableAmount,
+          closed: item.closed,
+          allocations: item.allocations.map((entry) => ({ goalId: entry.goalId, planned: entry.planned })),
+        })),
+        fundingByMonth,
+        templates,
+      });
+      return NextResponse.json({ preview: true as const, validFrom: body.validFrom, ...preview });
+    }
+
+    // Gravação atómica: versão + pré-cálculo do ano na mesma transação —
+    // nunca fica uma versão gravada com os meses por recalcular.
+    const { seeds } = buildYearSeeds({
+      year,
+      funding: funding.months.map((item) => ({ month: item.month, available: item.available })),
+      templates: [...templates, { id: "pending", validFrom: body.validFrom as string, annualTotal: 0, entries: parsed.entries }],
+    });
+    try {
+      const created = await goalTemplateRepository.createWithYearSeeds(
+        body.validFrom as string,
+        body.annualTotal as number,
+        parsed.entries,
+        year,
+        seeds,
+      );
+      const plans = await goalPlanRepository.listByYear(year);
+      return NextResponse.json({ preview: false as const, template: created, plans }, { status: 201 });
+    } catch (error) {
+      const mapped = versionErrorResponse(error);
+      if (mapped) return mapped;
+      throw error;
+    }
   } catch (error) {
     console.error("Could not create goal template.", error);
     return NextResponse.json({ error: "Não foi possível criar o template." }, { status: 500 });

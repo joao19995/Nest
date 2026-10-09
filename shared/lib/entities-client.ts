@@ -64,12 +64,12 @@ export const entitiesClient = {
   getGoalPlan: (month: string) => requestOrNull<GoalPlanView>(`/api/goal-plan?month=${encodeURIComponent(month)}`, { cache: "no-store" }),
   getGoalYear: (year: number) => request<{ plans: GoalPlanView[]; funding: YearFunding }>(`/api/goal-plan?year=${year}`, { cache: "no-store" }),
   previewGoalAdjust: (month: string, allocations: { goalId: string; planned: number }[]) =>
-    request<{ preview: true; month: string; availableAmount: number; newAllocations: { goalId: string; planned: number }[]; futureChanges: { month: string; availableAmount: number; before: { goalId: string; planned: number }[]; after: { goalId: string; planned: number }[] }[]; missingMonths: string[] }>(
+    request<{ preview: true; month: string; availableAmount: number; newAllocations: { goalId: string; planned: number }[]; futureChanges: { month: string; availableAmount: number; before: { goalId: string; planned: number }[]; after: { goalId: string; planned: number }[] }[]; missingMonths: string[]; closedSkipped: string[] }>(
       "/api/goal-plan/adjust",
       { method: "POST", body: JSON.stringify({ month, allocations, dryRun: true }) },
     ),
   applyGoalAdjust: (month: string, allocations: { goalId: string; planned: number }[]) =>
-    request<{ preview: false; plans: GoalPlanView[]; futureChanges: unknown[]; missingMonths: string[] }>(
+    request<{ preview: false; plans: GoalPlanView[]; futureChanges: unknown[]; missingMonths: string[]; closedSkipped: string[] }>(
       "/api/goal-plan/adjust",
       { method: "POST", body: JSON.stringify({ month, allocations, dryRun: false }) },
     ),
@@ -86,8 +86,18 @@ export const entitiesClient = {
 
   getGoalTemplates: () => request<GoalTemplate[]>("/api/goal-templates", { cache: "no-store" }),
   getApplicableGoalTemplate: (month: string) => request<GoalTemplate | null>(`/api/goal-templates?applicableTo=${month}`, { cache: "no-store" }),
+  previewGoalTemplate: (input: { validFrom: string; annualTotal: number; entries: GoalTemplateEntry[] }) =>
+    request<{ preview: true; validFrom: string; affected: unknown[]; closedSkipped: string[]; missingMonths: string[] }>(
+      "/api/goal-templates",
+      { method: "POST", body: JSON.stringify({ ...input, dryRun: true }) },
+    ),
   createGoalTemplate: (input: { validFrom: string; annualTotal: number; entries: GoalTemplateEntry[] }) =>
-    request<GoalTemplate>("/api/goal-templates", { method: "POST", body: JSON.stringify(input) }),
+    request<{ preview: false; template: GoalTemplate; plans: GoalPlanView[] }>("/api/goal-templates", { method: "POST", body: JSON.stringify(input) }),
+  previewGoalTemplateUpdate: (id: string, input: { annualTotal: number; entries: GoalTemplateEntry[] }) =>
+    request<{ preview: true; validFrom: string; editable: boolean; affected: { month: string; availableAmount: number; before: { goalId: string; planned: number }[]; after: { goalId: string; planned: number }[] }[]; closedSkipped: string[]; missingMonths: string[] }>(
+      `/api/goal-templates/${id}`,
+      { method: "PUT", body: JSON.stringify({ ...input, dryRun: true }) },
+    ),
   updateGoalTemplate: (id: string, input: { annualTotal: number; entries: GoalTemplateEntry[] }) =>
-    request<GoalTemplate>(`/api/goal-templates/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+    request<{ preview: false; template: GoalTemplate; plans: GoalPlanView[] }>(`/api/goal-templates/${id}`, { method: "PUT", body: JSON.stringify(input) }),
 };

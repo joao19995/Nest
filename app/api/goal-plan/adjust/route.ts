@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
     // O mês ajustado fica exatamente como o utilizador definiu; os futuros
     // meses abertos são recalculados com o template aplicável a cada mês.
-    const { toApply, futureChanges, missingMonths } = computeAdjustRecalc({
+    const { toApply, futureChanges, missingMonths, closedSkipped } = computeAdjustRecalc({
       targetMonth: month,
       targetAvailable: plan.availableAmount,
       targetAllocations: allocations,
@@ -88,6 +88,7 @@ export async function POST(request: Request) {
         newAllocations: allocations,
         futureChanges,
         missingMonths,
+        closedSkipped,
       });
     }
 
@@ -97,12 +98,13 @@ export async function POST(request: Request) {
       if (cause && typeof cause === "object" && "code" in cause) {
         const code = (cause as { code: string }).code;
         if (code === "closed") return NextResponse.json({ error: "Um dos meses foi fechado entretanto. Recarrega e tenta de novo." }, { status: 409 });
+        if (code === "invalid_total") return NextResponse.json({ error: "A soma das alocações deixou de igualar o disponível. Recarrega e tenta de novo." }, { status: 400 });
         return NextResponse.json({ error: "Mês não encontrado." }, { status: 404 });
       }
       throw cause;
     }
     const plans = await goalPlanRepository.listByYear(year);
-    return NextResponse.json({ preview: false as const, plans, futureChanges, missingMonths });
+    return NextResponse.json({ preview: false as const, plans, futureChanges, missingMonths, closedSkipped });
   } catch (error) {
     console.error("Could not adjust goal month.", error);
     return NextResponse.json({ error: "Não foi possível ajustar o mês." }, { status: 500 });
