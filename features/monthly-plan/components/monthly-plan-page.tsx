@@ -175,14 +175,15 @@ export function MonthlyPlanPage() {
           <div className="section-title"><div><p className="eyebrow">Contribuições</p><h2>Quanto cada pessoa transfere</h2></div></div>
           {contributions?.status === "no-income" && <p className="form-error" role="alert">{contributions.message}</p>}
           {contributions?.status === "ok" && <>
-            <p className="form-note">Contribuição total necessária: {euro(contributions.contributionRequired)} (planeado + 10%).</p>
+            <p className="form-note">Quota total (despesas reais comuns): {euro(contributions.contributionRequired)} (actual, sem margem).</p>
             <div className="category-table month-contributions">
-              <div className="category-table-row category-table-header"><span>Pessoa</span><span>Contribuição</span><span>Já pago pela conta pessoal</span><span>A transferir</span></div>
+              <div className="category-table-row category-table-header"><span>Pessoa</span><span>Quota</span><span>Já pago pela conta pessoal</span><span>A transferir para a conjunta</span><span>A receber da conjunta</span></div>
               {contributions.people.map((item) => <div className="category-table-row" key={item.personId}>
                 <strong>{state.configuration.people.find((person) => person.id === item.personId)?.name ?? "—"}</strong>
-                <span>{euro(item.contribution)}</span>
+                <span>{euro(item.quota)}</span>
                 <span>{euro(item.personalActual)}</span>
-                <span>{euro(item.transferNeeded)}</span>
+                <span>{euro(item.transferToJoint)}</span>
+                <span>{euro(item.transferToPerson)}</span>
               </div>)}
             </div>
           </>}

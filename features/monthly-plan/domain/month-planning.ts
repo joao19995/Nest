@@ -1,8 +1,5 @@
 import type { MonthlyPlanEntryView, PersonIncome } from "./types";
 
-// Margem de 10% sobre o total planeado do mês.
-export const CONTRIBUTION_MARGIN = 1.1;
-
 // Rendimento aplicável a um mês: o income mais recente com validFrom <= primeiro dia do mês.
 export function applicableIncome(incomes: PersonIncome[], personId: string, month: string): number {
   return incomes
@@ -29,17 +26,20 @@ export function personalActualFor(entries: MonthlyPlanEntryView[], personId: str
 export type PersonContribution = {
   personId: string;
   income: number;
-  contribution: number;
+  quota: number;
   personalActual: number;
-  transferNeeded: number;
+  transferToJoint: number;
+  transferToPerson: number;
 };
 
 export type MonthContributions =
   | { status: "ok"; contributionRequired: number; people: PersonContribution[] }
   | { status: "no-income"; message: string };
 
-// Contribuição = total planeado × 1,10, dividida pelo rendimento de cada pessoa.
-// Transferência = max(0, contribuição − actual pago pela conta pessoal).
+// Quota = total actual comum do mês, dividida pelo rendimento de cada pessoa.
+// Settlement em duas direções distintas:
+//   Person → Joint: max(0, quota − personalActual)
+//   Joint → Person: max(0, personalActual − quota)
 export function calculateMonthContributions(input: {
   month: string;
   entries: MonthlyPlanEntryView[];
@@ -52,11 +52,11 @@ export function calculateMonthContributions(input: {
     return { status: "no-income", message: "Não é possível calcular as contribuições porque não existem rendimentos configurados para este mês." };
   }
 
-  const contributionRequired = totalPlanned(input.entries) * CONTRIBUTION_MARGIN;
+  const contributionRequired = totalActual(input.entries);
   const people = incomeByPerson.map(({ personId, income }) => {
-    const contribution = contributionRequired * income / totalIncome;
+    const quota = contributionRequired * income / totalIncome;
     const personalActual = personalActualFor(input.entries, personId);
-    return { personId, income, contribution, personalActual, transferNeeded: Math.max(0, contribution - personalActual) };
+    return { personId, income, quota, personalActual, transferToJoint: Math.max(0, quota - personalActual), transferToPerson: Math.max(0, personalActual - quota) };
   });
   return { status: "ok", contributionRequired, people };
 }
