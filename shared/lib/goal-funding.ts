@@ -11,6 +11,7 @@ export type MonthFunding = {
   bonus: number;
   dailyAllowance: number;
   contributionRequired: number;
+  individualFixedTotal: number;
   available: number;
 };
 
@@ -26,30 +27,31 @@ async function loadIncomes(): Promise<PersonIncome[]> {
   return rows.map((row) => ({ id: row.id, personId: row.person_id, amount: Number(row.amount), validFrom: row.valid_from }));
 }
 
-// Contribuição do mês: max(planeado x 1.10, actual) do monthly_plan,
-// ou total do template aplicável x 1.10 quando o mês ainda não existe.
+// Contribuição do mês: total planeado do monthly_plan (valores predefinidos),
+// ou total do template aplicável quando o mês ainda não existe.
+// O actual do mês é independente: nunca altera o disponível para objetivos.
 async function contributionFor(month: string): Promise<number> {
   const plan = await monthlyPlanRepository.findByMonth(month);
   if (plan && plan.entries.length) {
-    const planned = plan.entries.reduce((total, entry) => total + entry.planned, 0);
-    const actual = plan.entries.reduce((total, entry) => total + entry.actual, 0);
-    return Math.max(planned * 1.1, actual);
+    return plan.entries.reduce((total, entry) => total + entry.planned, 0);
   }
   const template = await categoryTemplateRepository.findApplicable(month);
   if (!template) return 0;
-  return template.entries.filter((entry) => entry.active).reduce((total, entry) => total + entry.expectedAmount, 0) * 1.1;
+  return template.entries.filter((entry) => entry.active).reduce((total, entry) => total + entry.expectedAmount, 0);
 }
 
 export async function getMonthFunding(month: string): Promise<MonthFunding> {
   const people = await personRepository.findAll();
   const incomes = await loadIncomes();
+  const individualFixedTotal = people.reduce((total, person) => total + (person.individualFixedAmount ?? 0), 0);
   const result = calculateAvailableForGoals({
     month,
     incomes,
     people: people.map((person) => ({ personId: person.id, dailySpendingPercentage: person.dailySpendingPercentage })),
     contributionRequired: await contributionFor(month),
+    individualFixedTotal,
   });
-  return { month, incomeNormal: result.incomeNormal, bonus: result.bonus, dailyAllowance: result.dailyAllowance, contributionRequired: result.contributionRequired, available: round2(result.available) };
+  return { month, incomeNormal: result.incomeNormal, bonus: result.bonus, dailyAllowance: result.dailyAllowance, contributionRequired: result.contributionRequired, individualFixedTotal: result.individualFixedTotal, available: round2(result.available) };
 }
 
 export type YearFunding = {

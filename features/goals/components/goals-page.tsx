@@ -40,15 +40,6 @@ type FutureChange = {
   after: { goalId: string; planned: number }[];
 };
 
-type Preview = {
-  month: string;
-  availableAmount: number;
-  newAllocations: { goalId: string; planned: number }[];
-  futureChanges: FutureChange[];
-  missingMonths: string[];
-  closedSkipped: string[];
-};
-
 type TemplatePreview = {
   validFrom: string;
   affected: FutureChange[];
@@ -83,11 +74,7 @@ export function GoalsPage() {
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalFormError, setGoalFormError] = useState("");
 
-  // Painel C — revisão mensal.
-  const [plannedDrafts, setPlannedDrafts] = useState<Record<string, string>>({});
-  const [actualDrafts, setActualDrafts] = useState<Record<string, string>>({});
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
+  // Nota do recálculo anual.
   const [monthNote, setMonthNote] = useState("");
 
   const year = Number(month.slice(0, 4));
@@ -130,9 +117,6 @@ export function GoalsPage() {
   }, [goalModalOpen, savingGoal]);
 
   useEffect(() => {
-    setPlannedDrafts({});
-    setActualDrafts({});
-    setPreview(null);
     setMonthNote("");
     void reloadYear(year);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,12 +128,9 @@ export function GoalsPage() {
     [yearFunding],
   );
 
-  const plan = planByMonth.get(month) ?? null;
-  const funding = fundingByMonth.get(month) ?? null;
-
   function goalName(goalId: string) {
     return goals.find((item) => item.id === goalId)?.name
-      ?? plan?.allocations.find((item) => item.goalId === goalId)?.goalName
+      ?? yearPlans.flatMap((item) => item.allocations).find((item) => item.goalId === goalId)?.goalName
       ?? "Objetivo arquivado";
   }
 
@@ -158,6 +139,18 @@ export function GoalsPage() {
   const existingTemplate = templates.find((item) => item.validFrom === templateDate) ?? null;
   const templatePct = totalPercentage(templateRows);
   const templateValid = templateRows.length > 0 && isValidTemplateTotal(templateRows);
+  // Disponível anual de referência: preencher por % ou por valor dá o mesmo, um calcula o outro.
+  const editorAnnualTotal = yearFunding?.annualTotal ?? 0;
+  const templateAmountTotal = templatePct / 100 * editorAnnualTotal;
+
+  function updateTemplateRowPercentage(goalId: string, percentage: number) {
+    setTemplateRows((current) => current.map((item) => (item.goalId === goalId ? { ...item, percentage } : item)));
+    setTemplatePreview(null);
+  }
+
+  function updateTemplateRowAmount(goalId: string, amount: number) {
+    updateTemplateRowPercentage(goalId, editorAnnualTotal > 0 ? amount / editorAnnualTotal * 100 : 0);
+  }
 
   function openTemplateEditor() {
     setTemplateError("");
@@ -288,34 +281,6 @@ export function GoalsPage() {
     }
   }
 
-  // ---- Painel C: revisão mensal ----
-
-  const storedPlanned = useMemo(() => new Map((plan?.allocations ?? []).map((item) => [item.goalId, item.planned])), [plan]);
-  const editedPlanned = useMemo(
-    () => (plan?.allocations ?? []).map((item) => ({
-      goalId: item.goalId,
-      planned: plannedDrafts[item.goalId] === undefined ? item.planned : Number(plannedDrafts[item.goalId]),
-    })),
-    [plan, plannedDrafts],
-  );
-  const editedTotal = editedPlanned.reduce((sum, item) => sum + (Number.isFinite(item.planned) ? item.planned : 0), 0);
-  const plannedDiff = plan ? plan.availableAmount - editedTotal : 0;
-  const plannedDirty = editedPlanned.some((item) => Math.abs(item.planned - (storedPlanned.get(item.goalId) ?? 0)) > 0.005);
-  const plannedInvalid = editedPlanned.some((item) => !Number.isFinite(item.planned) || item.planned < 0);
-
-  async function createMonth() {
-    setError("");
-    setBusy(true);
-    try {
-      await entitiesClient.createGoalPlan(month);
-      await reloadYear(year);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível criar o mês.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function recalculateYear() {
     setError("");
     setBusy(true);
@@ -334,83 +299,6 @@ export function GoalsPage() {
       setBusy(false);
     }
   }
-
-  async function saveActual(goalId: string) {
-    if (!plan || plan.closed) return;
-    const raw = actualDrafts[goalId];
-    if (raw === undefined) return;
-    const value = Number(raw);
-    setActualDrafts((current) => { const next = { ...current }; delete next[goalId]; return next; });
-    if (!Number.isFinite(value) || value < 0) {
-      setError("Os valores reservados devem ser números não negativos.");
-      return;
-    }
-    try {
-      await entitiesClient.updateGoalAllocation(plan.id, goalId, { actual: value });
-      await reloadYear(year);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível guardar o valor reservado.");
-    }
-  }
-
-  async function buildPreview() {
-    if (!plan || plan.closed) return;
-    setMonthNote("");
-    if (plannedInvalid) {
-      setMonthNote("Os valores planeados devem ser números não negativos.");
-      return;
-    }
-    setPreviewBusy(true);
-    try {
-      const result = await entitiesClient.previewGoalAdjust(month, editedPlanned);
-      setPreview(result);
-      if (!result.futureChanges.length && !result.missingMonths.length) {
-        setMonthNote("Antevisão pronta: nenhum futuro mês aberto muda com este ajuste.");
-      }
-    } catch (cause) {
-      setMonthNote(cause instanceof Error ? cause.message : "Não foi possível pré-visualizar o ajuste.");
-    } finally {
-      setPreviewBusy(false);
-    }
-  }
-
-  async function confirmAdjust() {
-    if (!plan || plan.closed || !preview) return;
-    if (!window.confirm(`Confirmar o ajuste de ${displayMonth(month)} e recalcular os futuros meses abertos?`)) return;
-    setBusy(true);
-    try {
-      const result = await entitiesClient.applyGoalAdjust(month, editedPlanned);
-      setYearPlans(result.plans);
-      setPlannedDrafts({});
-      setPreview(null);
-      setMonthNote(
-        result.missingMonths.length
-          ? `Ajuste gravado. Meses sem tabela (não alterados): ${result.missingMonths.join(", ")}.`
-          : "Ajuste gravado para o mês e futuros meses abertos.",
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível confirmar o ajuste.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function closeMonth() {
-    if (!plan || plan.closed) return;
-    if (!window.confirm(`Fechar ${displayMonth(month)}? O planeado e o reservado ficam imutáveis.`)) return;
-    setBusy(true);
-    try {
-      await entitiesClient.closeGoalPlan(plan.id);
-      await reloadYear(year);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível fechar o mês.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const totalPlanned = plan?.allocations.reduce((sum, item) => sum + item.planned, 0) ?? 0;
-  const totalActual = plan?.allocations.reduce((sum, item) => sum + item.actual, 0) ?? 0;
 
   return (
     <main className="shell compact-shell">
@@ -431,10 +319,10 @@ export function GoalsPage() {
 
       {error && <p className="form-error" role="alert">{error}</p>}
 
-      {/* Painel C — principal: visão anual e revisão mensal */}
+      {/* Visão anual (a revisão de cada mês faz-se na aba Mês) */}
       <section className="settings-section">
         <div className="section-title">
-          <div><p className="eyebrow">Plano do ano {year}</p><h2>Visão anual e revisão mensal</h2></div>
+          <div><p className="eyebrow">Plano do ano {year}</p><h2>Visão anual</h2></div>
           <div className="entity-action-buttons">
             <button className="secondary-button" onClick={() => void recalculateYear()} disabled={busy || yearLoading}>
               {busy ? "A recalcular…" : "Recalcular ano"}
@@ -444,7 +332,9 @@ export function GoalsPage() {
         <p className="form-note">
           Disponível anual: {yearFunding ? euro(yearFunding.annualTotal) : "a calcular…"}.
           Cada mês distribui 100% do seu disponível. <strong>Por validar</strong> = mês ainda sem plano gravado.
+          A revisão de cada mês faz-se na aba Mês.
         </p>
+        {monthNote && <p className="form-note">{monthNote}</p>}
         {yearLoading ? (
           <p className="form-note">A carregar o ano…</p>
         ) : (
@@ -457,18 +347,8 @@ export function GoalsPage() {
               const itemFunding = fundingByMonth.get(item);
               const status = itemPlan ? (itemPlan.closed ? "Fechado" : "Aberto") : "Por validar";
               const isCurrent = item === currentMonth();
-              const isSelected = item === month;
               return (
-                <div
-                  className="category-table-row"
-                  key={item}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Rever ${displayMonth(item)}`}
-                  onClick={() => setMonth(item)}
-                  onKeyDown={(event) => { if (event.key === "Enter") setMonth(item); }}
-                  style={isSelected ? { outline: "2px solid currentColor" } : undefined}
-                >
+                <div className="category-table-row" key={item}>
                   <strong>{shortMonth(item)}{isCurrent ? " •" : ""}</strong>
                   <span>{status}</span>
                   <span>{itemFunding ? euro(itemFunding.available) : itemPlan ? euro(itemPlan.availableAmount) : "—"}</span>
@@ -480,103 +360,6 @@ export function GoalsPage() {
           </div>
         )}
       </section>
-
-      {!yearLoading && !plan && (
-        <section className="settings-section">
-          <div className="section-title"><div><p className="eyebrow">Mês</p><h2>{displayMonth(month)}</h2></div></div>
-          <p className="form-note">
-            {funding
-              ? `Disponível calculado: ${euro(funding.available)} (ordenado ${euro(funding.incomeNormal)} − contribuição ${euro(funding.contributionRequired)} − diário ${euro(funding.dailyAllowance)}${funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}).`
-              : "A calcular o disponível…"}
-            {!templates.length ? " Cria primeiro a tabela anual (Painel A)." : ""}
-          </p>
-          <div className="editor-actions">
-            <button className="save-button" onClick={() => void createMonth()} disabled={busy || !funding}>
-              {busy ? "A criar…" : "Criar mês"}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {!yearLoading && plan && (
-        <section className="settings-section">
-          <div className="section-title">
-            <div><p className="eyebrow">Revisão mensal</p><h2>{displayMonth(month)} {plan.closed ? "(Fechado)" : "(Aberto)"}</h2></div>
-          </div>
-          {plan.closed && <p className="form-note">Mês fechado — planeado e reservado são apenas leitura e nunca mudam.</p>}
-          <section className="category-totals">
-            <article className="panel"><p className="eyebrow">Disponível</p><h2>{euro(plan.availableAmount)}</h2></article>
-            <article className="panel"><p className="eyebrow">Planeado</p><h2>{euro(totalPlanned)}</h2></article>
-            <article className="panel"><p className="eyebrow">Reservado</p><h2>{euro(totalActual)}</h2></article>
-            <article className="panel"><p className="eyebrow">Diferença</p><h2>{euro(plan.availableAmount - totalPlanned)}</h2></article>
-          </section>
-          {funding && <p className="form-note">Cálculo: ordenado {euro(funding.incomeNormal)} − contribuição {euro(funding.contributionRequired)} − diário {euro(funding.dailyAllowance)}{funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}.</p>}
-
-          <div className="category-table month-table">
-            <div className="category-table-row category-table-header"><span>Objetivo</span><span>Planeado</span><span>Reservado</span></div>
-            {plan.allocations.map((item) => (
-              <div className="category-table-row" key={item.goalId}>
-                <strong>{item.goalName}</strong>
-                <span><input type="number" min="0" step="0.01" aria-label={`Planeado de ${item.goalName}`} disabled={plan.closed}
-                  value={plannedDrafts[item.goalId] ?? item.planned}
-                  onChange={(event) => { setPlannedDrafts((current) => ({ ...current, [item.goalId]: event.target.value })); setPreview(null); }} /></span>
-                <span><input type="number" min="0" step="0.01" aria-label={`Reservado de ${item.goalName}`} disabled={plan.closed}
-                  value={actualDrafts[item.goalId] ?? item.actual}
-                  onChange={(event) => setActualDrafts((current) => ({ ...current, [item.goalId]: event.target.value }))}
-                  onBlur={() => void saveActual(item.goalId)} /></span>
-              </div>
-            ))}
-          </div>
-
-          {!plan.closed && (
-            <>
-              <p className="form-note">
-                Ajuste atual: {euro(editedTotal)} de {euro(plan.availableAmount)} ({euro(plannedDiff)} por distribuir).
-                O ajuste muda apenas este mês; a confirmação recalcula os futuros meses abertos com a tabela aplicável.
-              </p>
-              {monthNote && <p className="form-note">{monthNote}</p>}
-              <div className="editor-actions">
-                <button className="secondary-button" onClick={() => void buildPreview()} disabled={previewBusy || !plannedDirty || plannedInvalid}>
-                  {previewBusy ? "A pré-visualizar…" : "Pré-visualizar ajuste"}
-                </button>
-                <button className="save-button" onClick={() => void confirmAdjust()} disabled={busy || !preview || plannedInvalid || Math.abs(plannedDiff) > 0.005}>
-                  {busy ? "A confirmar…" : "Confirmar ajustes"}
-                </button>
-                <button className="save-button" onClick={() => void closeMonth()} disabled={busy}>
-                  {busy ? "A fechar…" : "Fechar mês"}
-                </button>
-              </div>
-              {preview && preview.futureChanges.length > 0 && (
-                <div className="category-table">
-                  <div className="category-table-row category-table-header"><span>Mês futuro</span><span>Antes</span><span>Depois</span></div>
-                  {preview.futureChanges.map((change) => (
-                    <div key={change.month}>
-                      <div className="category-table-row">
-                        <strong>{displayMonth(change.month)}</strong>
-                        <span>{euro(change.before.reduce((sum, entry) => sum + entry.planned, 0))}</span>
-                        <span>{euro(change.after.reduce((sum, entry) => sum + entry.planned, 0))}</span>
-                      </div>
-                      {change.after.map((entry) => (
-                        <div className="category-table-row" key={`${change.month}:${entry.goalId}`}>
-                          <span>{goalName(entry.goalId)}</span>
-                          <span>{euro(change.before.find((before) => before.goalId === entry.goalId)?.planned ?? 0)}</span>
-                          <span>{euro(entry.planned)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {preview && preview.missingMonths.length > 0 && (
-                <p className="form-note">Sem tabela aplicável (não alterados): {preview.missingMonths.join(", ")}.</p>
-              )}
-              {preview && preview.closedSkipped.length > 0 && (
-                <p className="form-note">Fechados (não mudam): {preview.closedSkipped.map(displayMonth).join(", ")}.</p>
-              )}
-            </>
-          )}
-        </section>
-      )}
 
       {/* Painel A — template anual */}
       <section className="settings-section">
@@ -623,20 +406,27 @@ export function GoalsPage() {
         })()}
         {templateEditing && (
           <>
-            <div className="category-table">
+            <p className="form-note">Preenche por percentagem ou por valor (do disponível anual de {euro(editorAnnualTotal)}): um calcula o outro. A soma tem de dar 100%.</p>
+            <div className="category-table goal-template-editor">
               <div className="category-table-row">
                 <strong>Total</strong>
                 <span>{templatePct.toFixed(2)}% {templateValid ? "✓" : "(tem de dar 100%)"}</span>
+                <span>{euro(Math.round(templateAmountTotal * 100) / 100)}</span>
               </div>
             </div>
-            <div className="category-table">
-              <div className="category-table-row category-table-header"><span>Objetivo</span><span>%</span></div>
+            <div className="category-table goal-template-editor">
+              <div className="category-table-row category-table-header"><span>Objetivo</span><span>%</span><span>Valor</span></div>
               {templateRows.map((row) => (
                 <div className="category-table-row" key={row.goalId}>
                   <strong>{goalName(row.goalId)}</strong>
                   <span><input aria-label={`Percentagem de ${goalName(row.goalId)}`} type="number" min="0" max="100" step="0.01"
                     value={row.percentage}
-                    onChange={(event) => { setTemplateRows((current) => current.map((item) => (item.goalId === row.goalId ? { ...item, percentage: Number(event.target.value) } : item))); setTemplatePreview(null); }} /></span>
+                    onChange={(event) => updateTemplateRowPercentage(row.goalId, Number(event.target.value))} /></span>
+                  <span><input aria-label={`Valor de ${goalName(row.goalId)}`} type="number" min="0" step="0.01"
+                    value={Math.round(row.percentage / 100 * editorAnnualTotal * 100) / 100}
+                    disabled={editorAnnualTotal <= 0}
+                    title={editorAnnualTotal <= 0 ? "Sem disponível anual calculado" : `Valor do disponível anual (${euro(editorAnnualTotal)})`}
+                    onChange={(event) => updateTemplateRowAmount(row.goalId, Number(event.target.value))} /></span>
                 </div>
               ))}
             </div>

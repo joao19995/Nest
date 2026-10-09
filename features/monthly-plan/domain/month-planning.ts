@@ -36,8 +36,8 @@ export type MonthContributions =
   | { status: "ok"; contributionRequired: number; people: PersonContribution[] }
   | { status: "no-income"; message: string };
 
-// Base = maior entre o planeado com 10% de margem e o actual do mês.
-// Quota = base dividida pelo rendimento de cada pessoa.
+// Base = maior entre o planeado e o actual do mês.
+// Quota = base dividida em partes iguais por pessoa.
 // Settlement em duas direções distintas:
 //   Person → Joint: max(0, quota − personalActual)
 //   Joint → Person: max(0, personalActual − quota)
@@ -53,11 +53,11 @@ export function calculateMonthContributions(input: {
     return { status: "no-income", message: "Não é possível calcular as contribuições porque não existem rendimentos configurados para este mês." };
   }
 
-  const plannedWithMargin = totalPlanned(input.entries) * 1.10;
+  const plannedTotal = totalPlanned(input.entries);
   const actualTotal = totalActual(input.entries);
-  const contributionRequired = Math.max(plannedWithMargin, actualTotal);
+  const contributionRequired = Math.max(plannedTotal, actualTotal);
   const people = incomeByPerson.map(({ personId, income }) => {
-    const quota = contributionRequired * income / totalIncome;
+    const quota = input.personIds.length > 0 ? contributionRequired / input.personIds.length : 0;
     const personalActual = personalActualFor(input.entries, personId);
     return { personId, income, quota, personalActual, transferToJoint: Math.max(0, quota - personalActual), transferToPerson: Math.max(0, personalActual - quota) };
   });

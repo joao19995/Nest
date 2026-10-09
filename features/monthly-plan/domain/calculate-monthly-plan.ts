@@ -50,30 +50,35 @@ export function calculateMonthlyPlan(configuration: FinancialConfiguration, annu
     ? month.expenses.filter((expense) => configuration.categories.find((category) => category.id === expense.categoryId)?.type === "FIXED").reduce((total, expense) => total + expense.planned, 0)
     : (template?.entries ?? []).filter((entry) => entry.active && configuration.categories.find((category) => category.id === entry.categoryId)?.active && configuration.categories.find((category) => category.id === entry.categoryId)?.type === "FIXED").reduce((total, entry) => total + entry.expectedAmount, 0);
   const templateExpectedTotal = (template?.entries ?? []).filter((entry) => entry.active).reduce((total, entry) => total + entry.expectedAmount, 0);
-  const contributionRequired = templateExpectedTotal * 1.1;
+  const contributionRequired = templateExpectedTotal;
   const dailySpending = incomeByPerson.reduce((total, income) => {
     const person = configuration.people.find((item) => item.id === income.personId);
     return total + income.amount * (person?.dailySpendingPercentage ?? 0) / 100;
   }, 0);
-  const surplus = totalIncome - fixedExpenses - dailySpending;
+  // Gastos fixos individuais: valor preenchido por pessoa (campo editável), não derivado do template.
+  // Saem do excedente como qualquer outra despesa fixa, reduzindo o disponível para objetivos.
+  const individualFixedByPerson = configuration.people.map((person) => ({
+    personId: person.id,
+    amount: person.individualFixedAmount ?? 0,
+  }));
+  const individualFixedTotal = individualFixedByPerson.reduce((total, item) => total + item.amount, 0);
+  const surplus = totalIncome - fixedExpenses - dailySpending - individualFixedTotal;
   const emergencyFund = incomeByPerson.reduce((total, income) => {
     const person = configuration.people.find((item) => item.id === income.personId);
     const share = totalIncome > 0 ? income.amount / totalIncome : 0;
-    return total + fixedExpenses * 1.1 * (person?.emergencyFundMonths ?? 0) * share;
+    return total + fixedExpenses * (person?.emergencyFundMonths ?? 0) * share;
   }, 0);
   const jointAccount = configuration.accounts.find((account) => account.name === "Conjunta");
   const jointExpenses = month.expenses.filter((expense) => expense.accountId === jointAccount?.id).reduce((total, expense) => total + expense.actual, 0);
+  const equalShare = configuration.people.length > 0 ? 1 / configuration.people.length : 0;
   const minimumTransfers = configuration.people.map((person) => {
-    const personIncome = incomeByPerson.find((income) => income.personId === person.id)?.amount ?? 0;
-    const share = totalIncome > 0 ? personIncome / totalIncome : 0;
-    return { personId: person.id, minimumAmount: contributionRequired * share, accountId: jointAccount?.id ?? "" };
+    return { personId: person.id, minimumAmount: contributionRequired * equalShare, accountId: jointAccount?.id ?? "" };
   });
   const totalMinimum = minimumTransfers.reduce((total, transfer) => total + transfer.minimumAmount, 0);
   const totalTransferRequirement = Math.max(jointExpenses, totalMinimum);
   const excess = Math.max(jointExpenses - totalMinimum, 0);
   const transfers = minimumTransfers.map((transfer) => {
-    const personIncome = incomeByPerson.find((income) => income.personId === transfer.personId)?.amount ?? 0;
-    const incomeForTransfers = totalIncome > 0 ? excess * (personIncome / totalIncome) : 0;
+    const incomeForTransfers = excess * equalShare;
     return { ...transfer, amount: transfer.minimumAmount + incomeForTransfers, status: "calculated" as const };
   });
   const surplusAfterTransfers = surplus - totalTransferRequirement;
@@ -81,5 +86,5 @@ export function calculateMonthlyPlan(configuration: FinancialConfiguration, annu
   const goalAllocations = annualPlan.allocations.filter((allocation) => allocation.month === month.month);
   const allocatedToGoals = goalAllocations.reduce((total, allocation) => total + allocation.amount, 0);
 
-  return { incomeByPerson, totalIncome, bonusesByPerson, totalBonus, plannedExpenses, actualExpenses, fixedExpenses, dailySpending, surplus, emergencyFund, totalJointExpenses: jointExpenses, templateExpectedTotal, contributionRequired, totalTransferRequirement, transfers, surplusAfterTransfers, availableForGoals, goalAllocations, allocatedToGoals, unallocatedForGoals: Math.max(availableForGoals - allocatedToGoals, 0) };
+  return { incomeByPerson, totalIncome, bonusesByPerson, totalBonus, plannedExpenses, actualExpenses, fixedExpenses, dailySpending, surplus, emergencyFund, totalJointExpenses: jointExpenses, templateExpectedTotal, contributionRequired, individualFixedByPerson, individualFixedTotal, totalTransferRequirement, transfers, surplusAfterTransfers, availableForGoals, goalAllocations, allocatedToGoals, unallocatedForGoals: Math.max(availableForGoals - allocatedToGoals, 0) };
 }

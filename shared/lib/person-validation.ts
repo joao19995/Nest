@@ -9,11 +9,13 @@ export function parsePersonInput(value: unknown): PersonInput | null {
   if (!name || name.length > 100) return null;
   if (typeof input.dailySpendingPercentage !== "number" || !Number.isFinite(input.dailySpendingPercentage)) return null;
   if (typeof input.emergencyFundMonths !== "number" || !Number.isInteger(input.emergencyFundMonths) || input.emergencyFundMonths < 0) return null;
+  if (typeof input.individualFixedAmount !== "number" || !Number.isFinite(input.individualFixedAmount) || input.individualFixedAmount < 0) return null;
 
   return {
     name,
     dailySpendingPercentage: input.dailySpendingPercentage,
     emergencyFundMonths: input.emergencyFundMonths,
+    individualFixedAmount: Math.round(input.individualFixedAmount * 100) / 100,
   };
 }
 

@@ -47,7 +47,7 @@ export function CategoriesEditor() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([loadFinanceState(initialFinanceState), entitiesClient.getCategoryTemplates()]).then(([loaded, loadedTemplates]) => {
+    void Promise.all([loadFinanceState(), entitiesClient.getCategoryTemplates()]).then(([loaded, loadedTemplates]) => {
       if (!active) return;
       setState(loaded);
       setTemplates(loadedTemplates);
@@ -214,7 +214,7 @@ export function CategoriesEditor() {
       {error && <p className="form-error" role="alert">{error}</p>}
 
       <section className="category-totals">
-        <article className="panel"><p className="eyebrow">Template ativo + margem</p><h2><Money value={expectedTotal * 1.1} /></h2><p>{visibleEntries.length} entradas ativas com 10%.</p></article>
+        <article className="panel"><p className="eyebrow">Template ativo</p><h2><Money value={expectedTotal} /></h2><p>{visibleEntries.length} entradas ativas.</p></article>
         <article className="panel"><p className="eyebrow">Despesas fixas</p><h2><Money value={fixedTotal} /></h2><p>Categorias do tipo Fixa.</p></article>
         <article className="panel"><p className="eyebrow">Despesas variáveis</p><h2><Money value={variableTotal} /></h2><p>Categorias do tipo Variável.</p></article>
       </section>
@@ -288,7 +288,7 @@ export function CategoriesEditor() {
                 return <div className="template-entry-row" key={`${row.categoryId}-${index}`}>
                   <select aria-label="Categoria" value={row.categoryId} onChange={(event) => updateTemplateRow(index, { categoryId: event.target.value })}>{categoryOptions.map((category) => <option value={category.id} key={category.id}>{categoryLabel(category.id)}</option>)}</select>
                   <select aria-label="Conta" value={row.accountId} onChange={(event) => updateTemplateRow(index, { accountId: event.target.value })}>{accountOptions.map((accountId) => <option value={accountId} key={accountId}>{accountLabel(accountId)}</option>)}</select>
-                  <input type="number" min="0" aria-label="Valor esperado" value={row.expectedAmount} onChange={(event) => updateTemplateRow(index, { expectedAmount: Number(event.target.value) })} />
+                  <input type="number" min="0" step="0.01" aria-label="Valor esperado" value={row.expectedAmount} onChange={(event) => updateTemplateRow(index, { expectedAmount: Number(event.target.value) })} />
                   <button className="entity-edit-button entity-remove-button" type="button" title="Remover do template" aria-label={`Remover ${categoryLabel(row.categoryId)} do template`} onClick={() => removeTemplateRow(index)}>{removeIcon}</button>
                 </div>;
               })}

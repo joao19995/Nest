@@ -13,7 +13,7 @@ const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set
 
 export function DashboardPage() {
   const [state, setState] = useState(initialFinanceState);
-  useEffect(() => { void loadFinanceState(initialFinanceState).then(setState).catch(showFinanceStorageError); }, []);
+  useEffect(() => { void loadFinanceState().then(setState).catch(showFinanceStorageError); }, []);
   const year = 2026;
   const annualPlan = state.annualPlans.find((plan) => plan.year === year) ?? { year, allocations: [] };
   const months = monthNames.map((_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);

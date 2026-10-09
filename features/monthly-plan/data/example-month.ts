@@ -3,8 +3,8 @@ import { entitySeedIds } from "../../../shared/lib/entity-seed-ids";
 
 export const exampleConfiguration: FinancialConfiguration = {
   people: [
-    { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, emergencyFundMonths: 6 },
-    { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, emergencyFundMonths: 6 },
+    { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, emergencyFundMonths: 6, individualFixedAmount: 0 },
+    { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, emergencyFundMonths: 6, individualFixedAmount: 0 },
   ],
   personIncomes: [
     { id: entitySeedIds.personIncomes.joao202601, personId: entitySeedIds.people.joao, amount: 2500, validFrom: "2026-01-01" },

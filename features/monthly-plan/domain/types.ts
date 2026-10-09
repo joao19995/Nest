@@ -3,6 +3,7 @@ export type Person = {
   name: string;
   dailySpendingPercentage: number;
   emergencyFundMonths: number;
+  individualFixedAmount: number;
 };
 
 export type PersonIncome = {
@@ -132,6 +133,8 @@ export type MonthlyCalculation = {
   totalJointExpenses: number;
   templateExpectedTotal: number;
   contributionRequired: number;
+  individualFixedByPerson: { personId: string; amount: number }[];
+  individualFixedTotal: number;
   totalTransferRequirement: number;
   transfers: TransferCalculation[];
   surplusAfterTransfers: number;

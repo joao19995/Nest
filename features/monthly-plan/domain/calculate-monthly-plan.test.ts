@@ -19,15 +19,18 @@ describe("calculateMonthlyPlan", () => {
   it("calculates the global emergency fund", () => {
     const result = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, exampleMonth);
 
-    expect(result.emergencyFund).toBe(6600);
+    expect(result.emergencyFund).toBe(6000);
     expect(result.dailySpending).toBe(1170);
-    // Template de exemplo: 1000 + 100 + 80 + 180 = 1360 → contribuição 1360 × 1.1 = 1496
+    // Template de exemplo: 1000 + 100 + 80 + 180 = 1360 → contribuição 1360
     expect(result.templateExpectedTotal).toBe(1360);
-    expect(result.contributionRequired).toBeCloseTo(1496);
-    expect(result.surplusAfterTransfers).toBeCloseTo(1014);
+    expect(result.contributionRequired).toBeCloseTo(1360);
+    expect(result.individualFixedTotal).toBeCloseTo(0);
+    expect(result.individualFixedByPerson.find((item) => item.personId === entitySeedIds.people.joao)?.amount).toBeCloseTo(0);
+    expect(result.individualFixedByPerson.find((item) => item.personId === entitySeedIds.people.natch)?.amount).toBeCloseTo(0);
+    expect(result.surplusAfterTransfers).toBeCloseTo(1150);
     expect(result.goalAllocations).toEqual([]);
-    expect(result.availableForGoals).toBeCloseTo(1014);
-    expect(result.unallocatedForGoals).toBeCloseTo(1014);
+    expect(result.availableForGoals).toBeCloseTo(1150);
+    expect(result.unallocatedForGoals).toBeCloseTo(1150);
 
     const nextMonth = { ...exampleMonth, month: "2026-11" };
     const nextResult = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, nextMonth);
@@ -38,9 +41,9 @@ describe("calculateMonthlyPlan", () => {
   it("calculates transfers from the template contribution and joint actual expenses", () => {
     const result = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, exampleMonth);
     expect(result.transfers[0]).toMatchObject({ personId: entitySeedIds.people.joao, accountId: entitySeedIds.accounts.joint, status: "calculated" });
-    expect(result.transfers[0].minimumAmount).toBeCloseTo(1496 * 2680 / 4680);
+    expect(result.transfers[0].minimumAmount).toBeCloseTo(680);
     expect(result.transfers[0].amount).toBeCloseTo(result.transfers[0].minimumAmount);
-    expect(result.transfers[1].minimumAmount).toBeCloseTo(1496 * 2000 / 4680);
+    expect(result.transfers[1].minimumAmount).toBeCloseTo(680);
     expect(result.transfers[1].amount).toBeCloseTo(result.transfers[1].minimumAmount);
 
     const highJointExpenses = { ...exampleMonth, expenses: [{ categoryId: entitySeedIds.categories.house, accountId: entitySeedIds.accounts.joint, planned: 1600, actual: 1600 }] };
@@ -52,7 +55,7 @@ describe("calculateMonthlyPlan", () => {
     expect(calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, expensesAboveMinimum).totalTransferRequirement).toBe(2000);
     const proportionalTransfers = calculateMonthlyPlan(exampleConfiguration, exampleAnnualPlan, expensesAboveMinimum).transfers;
     expect(proportionalTransfers.every((transfer) => transfer.status === "calculated")).toBe(true);
-    expect(proportionalTransfers.reduce((sum, transfer) => sum + transfer.amount, 0)).toBe(2000);
+    expect(proportionalTransfers.reduce((sum, transfer) => sum + transfer.amount, 0)).toBeCloseTo(2000);
   });
 
   it("keeps bonuses out of day-to-day and sends them to Goals", () => {
@@ -70,7 +73,7 @@ describe("calculateMonthlyPlan", () => {
 
     expect(result.goalAllocations).toEqual(annualPlan.allocations);
     expect(result.allocatedToGoals).toBe(500);
-    expect(result.unallocatedForGoals).toBeCloseTo(514);
+    expect(result.unallocatedForGoals).toBeCloseTo(650);
   });
 });
 
@@ -97,14 +100,15 @@ function withTemplates(templates: CategoryTemplate[], overrides: Partial<Financi
 describe("monthly template contribution", () => {
   const january = { ...exampleMonth, month: "2026-01" };
 
-  it("derives contributions from the template total plus 10% split by income", () => {
+  it("derives contributions from the template total split equally", () => {
     const result = calculateMonthlyPlan(withTemplates([specTemplate]), exampleAnnualPlan, january);
 
     expect(result.templateExpectedTotal).toBe(1800);
-    expect(result.contributionRequired).toBeCloseTo(1980);
-    expect(result.transfers.find((transfer) => transfer.personId === entitySeedIds.people.joao)?.minimumAmount).toBeCloseTo(1100);
-    expect(result.transfers.find((transfer) => transfer.personId === entitySeedIds.people.natch)?.minimumAmount).toBeCloseTo(880);
-    expect(result.totalTransferRequirement).toBeCloseTo(1980);
+    expect(result.contributionRequired).toBeCloseTo(1800);
+    expect(result.transfers.find((transfer) => transfer.personId === entitySeedIds.people.joao)?.minimumAmount).toBeCloseTo(900);
+    expect(result.transfers.find((transfer) => transfer.personId === entitySeedIds.people.natch)?.minimumAmount).toBeCloseTo(900);
+    expect(result.totalTransferRequirement).toBeCloseTo(1800);
+    expect(result.individualFixedTotal).toBeCloseTo(0);
   });
 
   it("ignores inactive template entries", () => {
@@ -112,16 +116,33 @@ describe("monthly template contribution", () => {
     const result = calculateMonthlyPlan(withTemplates([withInactive]), exampleAnnualPlan, january);
 
     expect(result.templateExpectedTotal).toBe(1800);
-    expect(result.contributionRequired).toBeCloseTo(1980);
+    expect(result.contributionRequired).toBeCloseTo(1800);
   });
 
   it("uses the template version applicable to each month and keeps older versions", () => {
     const newerTemplate: CategoryTemplate = { id: "22222222-2222-4222-8222-222222222222", validFrom: "2026-05", entries: [{ categoryId: house, accountId: joint, expectedAmount: 1000, active: true }] };
     const configuration = withTemplates([specTemplate, newerTemplate]);
 
-    expect(calculateMonthlyPlan(configuration, exampleAnnualPlan, { ...exampleMonth, month: "2026-04" }).contributionRequired).toBeCloseTo(1980);
-    expect(calculateMonthlyPlan(configuration, exampleAnnualPlan, { ...exampleMonth, month: "2026-05" }).contributionRequired).toBeCloseTo(1100);
-    expect(calculateMonthlyPlan(configuration, exampleAnnualPlan, { ...exampleMonth, month: "2026-09" }).contributionRequired).toBeCloseTo(1100);
+    expect(calculateMonthlyPlan(configuration, exampleAnnualPlan, { ...exampleMonth, month: "2026-04" }).contributionRequired).toBeCloseTo(1800);
+    expect(calculateMonthlyPlan(configuration, exampleAnnualPlan, { ...exampleMonth, month: "2026-05" }).contributionRequired).toBeCloseTo(1000);
+    expect(calculateMonthlyPlan(configuration, exampleAnnualPlan, { ...exampleMonth, month: "2026-09" }).contributionRequired).toBeCloseTo(1000);
+  });
+
+  it("sums individual fixed amounts from the person field", () => {
+    const configuration = withTemplates([specTemplate], {
+      people: [
+        { id: entitySeedIds.people.joao, name: "João", dailySpendingPercentage: 25, emergencyFundMonths: 6, individualFixedAmount: 200 },
+        { id: entitySeedIds.people.natch, name: "Natch", dailySpendingPercentage: 25, emergencyFundMonths: 6, individualFixedAmount: 50 },
+      ],
+    });
+    const result = calculateMonthlyPlan(configuration, exampleAnnualPlan, january);
+
+    expect(result.individualFixedByPerson.find((item) => item.personId === entitySeedIds.people.joao)?.amount).toBeCloseTo(200);
+    expect(result.individualFixedByPerson.find((item) => item.personId === entitySeedIds.people.natch)?.amount).toBeCloseTo(50);
+    expect(result.individualFixedTotal).toBeCloseTo(250);
+    // 4500 - 1000 (fixa) - 1125 (diário) - 250 (individuais) - 1800 (transferência) = 325
+    expect(result.surplus).toBeCloseTo(2125);
+    expect(result.availableForGoals).toBeCloseTo(325);
   });
 
   it("does not produce NaN or division by zero without income", () => {
@@ -129,7 +150,7 @@ describe("monthly template contribution", () => {
     const result = calculateMonthlyPlan(noIncome, exampleAnnualPlan, january);
 
     expect(result.totalIncome).toBe(0);
-    expect(result.transfers.every((transfer) => transfer.minimumAmount === 0)).toBe(true);
+    expect(result.transfers.every((transfer) => transfer.minimumAmount === 900)).toBe(true);
     expect(Number.isFinite(result.totalTransferRequirement)).toBe(true);
     expect(Number.isFinite(result.surplusAfterTransfers)).toBe(true);
   });

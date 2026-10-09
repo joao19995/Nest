@@ -5,6 +5,7 @@ import { initialFinanceState } from "@/shared/lib/finance-demo-state";
 import { entitiesClient } from "@/shared/lib/entities-client";
 import { loadFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
 import { AppNav } from "@/shared/ui/app-nav";
+import { GoalMonthlyReview } from "@/features/goals/components/goal-monthly-review";
 import { calculateMonthContributions, totalActual, totalPlanned } from "../domain/month-planning";
 import type { FinanceState, MonthlyPlanEntryView, MonthlyPlanView } from "../domain/types";
 
@@ -36,7 +37,7 @@ export function MonthlyPlanPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    void loadFinanceState(initialFinanceState).then(setState).catch(showFinanceStorageError);
+    void loadFinanceState().then(setState).catch(showFinanceStorageError);
   }, []);
 
   useEffect(() => {
@@ -175,7 +176,7 @@ export function MonthlyPlanPage() {
           <div className="section-title"><div><p className="eyebrow">Contribuições</p><h2>Quanto cada pessoa transfere</h2></div></div>
           {contributions?.status === "no-income" && <p className="form-error" role="alert">{contributions.message}</p>}
           {contributions?.status === "ok" && <>
-            <p className="form-note">Base de contribuição: {euro(contributions.contributionRequired)} (maior entre o planeado + 10% e o actual).</p>
+            <p className="form-note">Base de contribuição: {euro(contributions.contributionRequired)} (maior entre o planeado e o actual).</p>
             <div className="category-table month-contributions">
               <div className="category-table-row category-table-header"><span>Pessoa</span><span>Quota</span><span>Já pago pela conta pessoal</span><span>A transferir para a conjunta</span><span>A receber da conjunta</span></div>
               {contributions.people.map((item) => <div className="category-table-row" key={item.personId}>
@@ -191,6 +192,14 @@ export function MonthlyPlanPage() {
 
         {!plan.closed && <div className="editor-actions"><button className="save-button" onClick={() => void closePlan()} disabled={busy}>{busy ? "A fechar…" : "Fechar mês"}</button></div>}
       </>}
+
+      <div className="page-heading">
+        <p className="eyebrow">Objetivos</p>
+        <h1>Objetivos do mês</h1>
+        <p className="lede">Distribuição do disponível pelos objetivos. Separado das despesas e contribuições acima.</p>
+      </div>
+
+      <GoalMonthlyReview month={month} />
     </main>
   );
 }
