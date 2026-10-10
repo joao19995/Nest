@@ -1,3 +1,12 @@
+-- 004: meses do plano mensal (snapshot do template + valores reais).
+--
+-- Usado pela aba Mês: criar o mês copia as entradas ativas do template
+-- aplicável (planned = expectedAmount, actual = 0). O planeado nunca muda
+-- depois de criado; só o actual é editável enquanto o mês está aberto.
+-- Mês fechado é só leitura. Uma categoria por mês (uma conta por categoria,
+-- como no template).
+-- Nao correr migracoes contra producao como parte de tarefas de codigo.
+
 CREATE TABLE IF NOT EXISTS monthly_plan (
     id UUID PRIMARY KEY,
     month VARCHAR(7) NOT NULL UNIQUE

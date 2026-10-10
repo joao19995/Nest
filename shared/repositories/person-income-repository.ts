@@ -28,15 +28,6 @@ export class PersonIncomeRepository {
     return rows.map(toPersonIncome);
   }
 
-  async findById(personId: string, id: string): Promise<PersonIncome | null> {
-    const sql = getPostgres();
-    const [row] = await sql<PersonIncomeRow[]>`
-      SELECT id, person_id, amount, to_char(valid_from, 'YYYY-MM-DD') AS valid_from
-      FROM person_income WHERE person_id = ${personId} AND id = ${id}
-    `;
-    return row ? toPersonIncome(row) : null;
-  }
-
   async create(personId: string, input: Pick<PersonIncome, "amount" | "validFrom">): Promise<PersonIncome> {
     const sql = getPostgres();
     const id = randomUUID();

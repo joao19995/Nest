@@ -22,9 +22,7 @@ function isUniqueViolation(error: unknown): boolean {
 
 type TemplateRow = { id: string; valid_from: string; annual_total: number | string };
 
-// As colunas priority e deadline_month continuam na base de dados por
-// compatibilidade historica, mas ja nao fazem parte da configuracao: a
-// alocacao usa apenas goalId + percentage. As escritas usam valores neutros.
+// Cada linha da tabela e so goalId + percentagem.
 type EntryRow = { template_id: string; goal_id: string; percentage: number | string };
 
 function toTemplate(row: TemplateRow, entries: EntryRow[]): GoalTemplate {
@@ -69,31 +67,6 @@ export class GoalTemplateRepository {
     const sql = getPostgres();
     const templates = await sql<TemplateRow[]>`SELECT id, valid_from, annual_total FROM goal_template WHERE id = ${id}`;
     return (await this.hydrate(templates))[0] ?? null;
-  }
-
-  async create(validFrom: string, annualTotal: number, entries: GoalTemplateEntry[]): Promise<GoalTemplate> {
-    const sql = getPostgres();
-    const id = randomUUID();
-    try {
-      await sql.begin(async (transaction) => {
-        await transaction`INSERT INTO goal_template (id, valid_from, annual_total) VALUES (${id}, ${validFrom}, ${annualTotal})`;
-        for (const entry of entries) {
-          await transaction`
-            INSERT INTO goal_template_entry (id, template_id, goal_id, percentage, priority, deadline_month)
-            VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage}, 'MEDIUM', NULL)
-          `;
-        }
-      });
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new GoalTemplateVersionError(
-          "duplicate_valid_from",
-          `Já existe um template a partir de ${validFrom}. Escolhe outro mês ou edita essa versão futura se ainda não foi usada.`,
-        );
-      }
-      throw error;
-    }
-    return (await this.findById(id))!;
   }
 
   /**
@@ -145,8 +118,8 @@ export class GoalTemplateRepository {
         await transaction`INSERT INTO goal_template (id, valid_from, annual_total) VALUES (${id}, ${validFrom}, ${annualTotal})`;
         for (const entry of entries) {
           await transaction`
-            INSERT INTO goal_template_entry (id, template_id, goal_id, percentage, priority, deadline_month)
-            VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage}, 'MEDIUM', NULL)
+            INSERT INTO goal_template_entry (id, template_id, goal_id, percentage)
+            VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage})
           `;
         }
         for (const seed of seeds) {
@@ -174,17 +147,6 @@ export class GoalTemplateRepository {
       throw error;
     }
     return (await this.findById(id))!;
-  }
-
-  // Substitui o conteúdo de uma versão NÃO USADA (sem nenhum mês governado:
-  // upsert das enviadas, apaga as removidas). A verificação de uso acontece
-  // DENTRO da transação, com a linha da versão bloqueada (FOR UPDATE), por
-  // isso edições concorrentes da mesma versão serializam e uma versão que
-  // entretanto passe a governar meses é rejeitada em vez de reescrever
-  // histórico. Versões com meses governados lançam version_in_use: o
-  // chamador deve responder 409 a pedir uma nova versão.
-  async replaceIfUnused(id: string, annualTotal: number, entries: GoalTemplateEntry[]): Promise<GoalTemplate | null> {
-    return this.replaceUnusedWithYearSeeds(id, annualTotal, entries, 0, []);
   }
 
   /**
@@ -218,8 +180,8 @@ export class GoalTemplateRepository {
       await transaction`UPDATE goal_template SET annual_total = ${annualTotal} WHERE id = ${id}`;
       for (const entry of entries) {
         await transaction`
-          INSERT INTO goal_template_entry (id, template_id, goal_id, percentage, priority, deadline_month)
-          VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage}, 'MEDIUM', NULL)
+          INSERT INTO goal_template_entry (id, template_id, goal_id, percentage)
+          VALUES (${randomUUID()}, ${id}, ${entry.goalId}, ${entry.percentage})
           ON CONFLICT (template_id, goal_id)
           DO UPDATE SET percentage = EXCLUDED.percentage
         `;

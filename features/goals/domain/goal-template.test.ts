@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findDeactivationBlockers, isValidTemplateTotal, resolveApplicableGoalTemplate, resolveApplicableGoalTemplateId, totalPercentage } from "./goal-template";
+import { findDeactivationBlockers, isValidTemplateTotal, resolveApplicableGoalTemplate, totalPercentage } from "./goal-template";
 
 describe("goal-template", () => {
   it("exige que a tabela some 100%", () => {
@@ -18,10 +18,6 @@ describe("goal-template", () => {
       { id: "jan", validFrom: "2026-01" },
       { id: "jul", validFrom: "2026-07" },
     ];
-    expect(resolveApplicableGoalTemplateId(templates, "2026-03")).toBe("jan");
-    expect(resolveApplicableGoalTemplateId(templates, "2026-07")).toBe("jul");
-    expect(resolveApplicableGoalTemplateId(templates, "2026-12")).toBe("jul");
-    expect(resolveApplicableGoalTemplateId(templates, "2025-12")).toBeNull();
     expect(resolveApplicableGoalTemplate(templates, "2026-05")).toEqual({ id: "jan", validFrom: "2026-01" });
   });
 });

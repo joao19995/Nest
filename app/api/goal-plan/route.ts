@@ -19,12 +19,7 @@ export async function GET(request: Request) {
       ]);
       return NextResponse.json({ plans, funding });
     }
-    const month = params.get("month");
-    if (!isValidMonth(month)) return NextResponse.json({ error: "Indica um mês válido (YYYY-MM)." }, { status: 400 });
-    const plan = await goalPlanRepository.findByMonth(month);
-    if (!plan) return NextResponse.json({ error: "Este mês ainda não foi criado." }, { status: 404 });
-    await goalPlanRepository.ensureAllocations(plan.id);
-    return NextResponse.json(await goalPlanRepository.findByMonth(month));
+    return NextResponse.json({ error: "Indica year (YYYY)." }, { status: 400 });
   } catch (error) {
     console.error("Could not load goal month.", error);
     return NextResponse.json({ error: "Não foi possível carregar o mês." }, { status: 500 });

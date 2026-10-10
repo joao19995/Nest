@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applicableIncome, calculateMonthContributions, resolveApplicableTemplateId } from "./month-planning";
+import { applicableIncome, calculateMonthContributions } from "./month-planning";
 import type { MonthlyPlanEntryView, PersonIncome } from "./types";
 
 const JOAO = "joao";
@@ -22,23 +22,6 @@ const plannedEntries = [
   entry({ planned: 100, actual: 100, accountOwnerPersonId: JOINT_OWNER }),
   entry({ planned: 200, actual: 180, accountOwnerPersonId: JOAO }),
 ];
-
-describe("resolveApplicableTemplateId", () => {
-  const templates = [
-    { id: "A", validFrom: "2026-01" },
-    { id: "B", validFrom: "2026-05" },
-  ];
-
-  it("uses the latest template whose validFrom is not after the month", () => {
-    expect(resolveApplicableTemplateId(templates, "2026-03")).toBe("A");
-    expect(resolveApplicableTemplateId(templates, "2026-05")).toBe("B");
-    expect(resolveApplicableTemplateId(templates, "2026-08")).toBe("B");
-  });
-
-  it("returns null when no template applies yet", () => {
-    expect(resolveApplicableTemplateId(templates, "2025-12")).toBeNull();
-  });
-});
 
 describe("applicableIncome", () => {
   it("ignores incomes that start after the month", () => {

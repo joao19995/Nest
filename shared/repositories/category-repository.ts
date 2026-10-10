@@ -8,12 +8,6 @@ export class CategoryRepository {
     return sql<Category[]>`SELECT id, name, type, active FROM category ORDER BY name`;
   }
 
-  async findById(id: string): Promise<Category | null> {
-    const sql = getPostgres();
-    const [category] = await sql<Category[]>`SELECT id, name, type, active FROM category WHERE id = ${id}`;
-    return category ?? null;
-  }
-
   async create(input: Omit<Category, "id">): Promise<Category> {
     const sql = getPostgres();
     const id = randomUUID();

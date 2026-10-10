@@ -118,12 +118,6 @@ export class GoalPlanRepository {
     return (await this.hydrate(plans))[0] ?? null;
   }
 
-  async findById(planId: string): Promise<GoalPlanView | null> {
-    const sql = getPostgres();
-    const plans = await sql<PlanRow[]>`SELECT id, month, available_amount, closed FROM goal_plan_month WHERE id = ${planId}`;
-    return (await this.hydrate(plans))[0] ?? null;
-  }
-
   /** Todos os meses guardados de um ano, ordenados. Inclui meses fechados. */
   async listByYear(year: number): Promise<GoalPlanView[]> {
     const sql = getPostgres();
@@ -139,17 +133,6 @@ export class GoalPlanRepository {
   async listOpenMonths(): Promise<{ month: string }[]> {
     const sql = getPostgres();
     return sql<{ month: string }[]>`SELECT month FROM goal_plan_month WHERE closed = FALSE ORDER BY month`;
-  }
-
-  async listClosedPlanned(): Promise<{ month: string; goalId: string; planned: number }[]> {
-    const sql = getPostgres();
-    const rows = await sql<{ month: string; goal_id: string; planned: number | string }[]>`
-      SELECT m.month, a.goal_id, a.planned
-      FROM goal_allocation a
-      JOIN goal_plan_month m ON m.id = a.plan_month_id
-      WHERE m.closed = TRUE
-    `;
-    return rows.map((row) => ({ month: row.month, goalId: row.goal_id, planned: Number(row.planned) }));
   }
 
   // Cria o mês com o available calculado (editável enquanto aberto) e linhas a zero para os goals ativos.
@@ -170,38 +153,8 @@ export class GoalPlanRepository {
     return this.findByMonth(month);
   }
 
-  // Garante linha para goals criados depois do mês (só em meses abertos).
-  async ensureAllocations(planId: string): Promise<void> {
+  async updateAllocation(planId: string, goalId: string, input: { actual: number }): Promise<UpdateAllocationResult> {
     const sql = getPostgres();
-    await sql`
-      INSERT INTO goal_allocation (id, plan_month_id, goal_id, planned, actual)
-      SELECT gen_random_uuid(), ${planId}, g.id, 0, 0
-      FROM goal g
-      JOIN goal_plan_month m ON m.id = ${planId} AND m.closed = FALSE
-      LEFT JOIN goal_allocation a ON a.plan_month_id = ${planId} AND a.goal_id = g.id
-      WHERE g.active = TRUE AND a.id IS NULL
-    `;
-  }
-
-  // Recalcula o disponível de um mês aberto (meses fechados nunca mudam).
-  async refreshAvailable(planId: string, availableAmount: number): Promise<UpdateAllocationResult> {
-    const sql = getPostgres();
-    const updated = await sql<{ id: string }[]>`
-      UPDATE goal_plan_month SET available_amount = ${availableAmount}
-      WHERE id = ${planId} AND closed = FALSE
-      RETURNING id
-    `;
-    if (updated.length) return "ok";
-    const [plan] = await sql<{ closed: boolean }[]>`SELECT closed FROM goal_plan_month WHERE id = ${planId}`;
-    if (!plan) return "not_found";
-    if (plan.closed) return "closed";
-    return "not_found";
-  }
-
-  async updateAllocation(planId: string, goalId: string, input: { planned?: number; actual?: number }): Promise<UpdateAllocationResult> {
-    const sql = getPostgres();
-    const { planned, actual } = input;
-    if (planned === undefined && actual === undefined) return "ok";
     // A verificação de mês fechado acontece DENTRO da transação, DEPOIS de
     // bloquear a linha do mês (FOR UPDATE): a mesma ordem de bloqueio usada
     // pelo recálculo em massa e pelo fecho, por isso atualizações e fechos
@@ -212,24 +165,8 @@ export class GoalPlanRepository {
       `;
       if (!plans.length) return "not_found";
       if (plans[0].closed) return "closed";
-      if (planned !== undefined && actual !== undefined) {
-        const updated = await transaction<{ id: string }[]>`
-          UPDATE goal_allocation SET planned = ${planned}, actual = ${actual}
-          WHERE plan_month_id = ${planId} AND goal_id = ${goalId}
-          RETURNING id
-        `;
-        return updated.length ? "ok" : "not_found";
-      }
-      if (planned !== undefined) {
-        const updated = await transaction<{ id: string }[]>`
-          UPDATE goal_allocation SET planned = ${planned}
-          WHERE plan_month_id = ${planId} AND goal_id = ${goalId}
-          RETURNING id
-        `;
-        return updated.length ? "ok" : "not_found";
-      }
       const updated = await transaction<{ id: string }[]>`
-        UPDATE goal_allocation SET actual = ${actual as number}
+        UPDATE goal_allocation SET actual = ${input.actual}
         WHERE plan_month_id = ${planId} AND goal_id = ${goalId}
         RETURNING id
       `;

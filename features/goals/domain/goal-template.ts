@@ -25,13 +25,6 @@ export function isValidTemplateTotal(entries: Pick<GoalTemplateEntry, "percentag
 }
 
 // Template aplicável ao mês: o de validFrom mais recente que seja <= mês.
-export function resolveApplicableGoalTemplateId(templates: { id: string; validFrom: string }[], month: string): string | null {
-  return templates
-    .filter((template) => template.validFrom <= month)
-    .sort((a, b) => a.validFrom.localeCompare(b.validFrom))
-    .at(-1)?.id ?? null;
-}
-
 export function resolveApplicableGoalTemplate<T extends { id: string; validFrom: string }>(
   templates: T[],
   month: string,

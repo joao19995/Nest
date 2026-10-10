@@ -30,13 +30,6 @@ describe("calculateAvailableForGoals", () => {
     expect(december.available).toBeCloseTo(1505 + 4500);
   });
 
-  it("subtrai os gastos fixos individuais ao disponível", () => {
-    // 4500 - 1870 - 250 - 1125 = 1255
-    const result = calculateAvailableForGoals({ month: "2026-03", incomes, people, contributionRequired: 1870, individualFixedTotal: 250 });
-    expect(result.individualFixedTotal).toBe(250);
-    expect(result.available).toBeCloseTo(1255);
-  });
-
   it("nunca devolve negativo e usa o income aplicável ao mês", () => {
     const tight = calculateAvailableForGoals({ month: "2026-03", incomes, people, contributionRequired: 5000 });
     expect(tight.available).toBe(0);

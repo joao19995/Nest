@@ -5,13 +5,8 @@ import { checkEntryReferences, isValidMonth, parseCategoryTemplateEntries } from
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const applicableTo = new URL(request.url).searchParams.get("applicableTo");
-    if (applicableTo !== null) {
-      if (!isValidMonth(applicableTo)) return NextResponse.json({ error: "Indica um mês válido (YYYY-MM)." }, { status: 400 });
-      return NextResponse.json(await categoryTemplateRepository.findApplicable(applicableTo));
-    }
     return NextResponse.json(await categoryTemplateRepository.findAll());
   } catch (error) {
     console.error("Could not list category templates.", error);

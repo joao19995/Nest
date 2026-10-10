@@ -217,7 +217,7 @@ export function GoalMonthlyReview({ month }: { month: string }) {
           <div className="section-title"><div><p className="eyebrow">Objetivos · mês</p><h2>{displayMonth(month)}</h2></div></div>
           <p className="form-note">
             {funding
-              ? `Disponível calculado: ${euro(funding.available)} (ordenado ${euro(funding.incomeNormal)} − contribuição ${euro(funding.contributionRequired)} − fixos individuais ${euro(funding.individualFixedTotal)} − diário ${euro(funding.dailyAllowance)}${funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}).`
+              ? `Disponível calculado: ${euro(funding.available)} (ordenado ${euro(funding.incomeNormal)} − contribuição ${euro(funding.contributionRequired)} − diário ${euro(funding.dailyAllowance)}${funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}).`
               : "A calcular o disponível…"}
             {!templates.length ? " Cria primeiro a tabela anual na aba Objetivos." : ""}
           </p>
@@ -241,7 +241,7 @@ export function GoalMonthlyReview({ month }: { month: string }) {
             <article className="panel"><p className="eyebrow">Reservado</p><h2>{euro(totalActual)}</h2></article>
             <article className="panel"><p className="eyebrow">Diferença</p><h2>{euro(plan.availableAmount - totalPlanned)}</h2></article>
           </section>
-          {funding && <p className="form-note">Cálculo: ordenado {euro(funding.incomeNormal)} − contribuição {euro(funding.contributionRequired)} − fixos individuais {euro(funding.individualFixedTotal)} − diário {euro(funding.dailyAllowance)}{funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}.</p>}
+          {funding && <p className="form-note">Cálculo: ordenado {euro(funding.incomeNormal)} − contribuição {euro(funding.contributionRequired)} − diário {euro(funding.dailyAllowance)}{funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}.</p>}
 
           <div className="category-table month-table">
             <div className="category-table-row category-table-header"><span>Objetivo</span><span>Planeado</span><span>Reservado</span></div>

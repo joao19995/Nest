@@ -5,9 +5,6 @@ import { goalRepository } from "@/shared/repositories/goal-repository";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const GOAL_PRIORITIES = ["GRANDE", "PEQUENO", "NICE_TO_HAVE"] as const;
-export const GOAL_TIMELINES = ["T1", "T2", "T3", "T4", "ANUAL"] as const;
-
 export type GoalDetailsInput = {
   name: string;
   targetAmount: number;

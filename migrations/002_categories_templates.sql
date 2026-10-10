@@ -1,5 +1,17 @@
-ALTER TABLE person
-    DROP COLUMN IF EXISTS contribution_minimum;
+-- 002: categorias e templates mensais (uma conta por categoria).
+--
+-- Usado pela aba Categorias: gestao de categorias e versoes do template
+-- mensal (linhas com categoria, conta e valor esperado). A conta de cada
+-- linha pertence ao template, nao a categoria (tabela account ja existe).
+-- Nao correr migracoes contra producao como parte de tarefas de codigo.
+
+CREATE TABLE IF NOT EXISTS category (
+    id UUID PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    type VARCHAR(20) NOT NULL
+        CHECK (type IN ('FIXED', 'VARIABLE')),
+    active BOOLEAN NOT NULL DEFAULT TRUE
+);
 
 CREATE TABLE IF NOT EXISTS category_template (
     id UUID PRIMARY KEY,

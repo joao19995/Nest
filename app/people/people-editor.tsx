@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { computePeopleSummary } from "@/features/people/domain/people-summary";
 import type { Account, FinanceState, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
+import { applicableIncome } from "@/features/monthly-plan/domain/month-planning";
 import { entitiesClient } from "@/shared/lib/entities-client";
-import { emptyFinanceState, loadFinanceState } from "@/shared/lib/finance-storage";
+import { emptyFinanceState } from "@/shared/lib/finance-storage";
 import { AppNav } from "@/shared/ui/app-nav";
 import { Money } from "@/shared/ui/money";
 
@@ -13,7 +13,7 @@ type PersonIncomeDraft = { id?: string; amount: number; validFrom: string };
 type AccountDraft = { name: string; ownerPersonId: string | null };
 
 function defaultPersonDraft(name = ""): PersonDraft {
-  return { name, dailySpendingPercentage: 25, emergencyFundMonths: 6, individualFixedAmount: 0 };
+  return { name, dailySpendingPercentage: 25, emergencyFundMonths: 6 };
 }
 
 function currentIncome(incomes: PersonIncome[], personId: string, month: string) {
@@ -38,10 +38,16 @@ export function PeopleEditor() {
 
   useEffect(() => {
     let active = true;
-    void loadFinanceState().then((loaded) => {
+    // Só pessoas, contas e rendimentos: esta página não depende de categorias nem templates.
+    void (async () => {
+      const people = await entitiesClient.getPeople();
+      const [accounts, ...incomesByPerson] = await Promise.all([
+        entitiesClient.getAccounts(),
+        ...people.map((person) => entitiesClient.getPersonIncomes(person.id)),
+      ]);
       if (!active) return;
-      setState(loaded);
-    }).catch((cause) => {
+      setState({ configuration: { people, personIncomes: incomesByPerson.flat(), accounts, categories: [], categoryTemplates: [] } });
+    })().catch((cause) => {
       if (active) setError(cause instanceof Error ? cause.message : "Não foi possível carregar os dados financeiros.");
     }).finally(() => {
       if (active) setLoading(false);
@@ -62,15 +68,12 @@ export function PeopleEditor() {
   }, [accountModalOpen, personModalOpen, savingAccount, savingPersonId]);
 
   const referenceMonth = new Date().toISOString().slice(0, 7);
-  const summary = computePeopleSummary({
-    month: referenceMonth,
-    people: state.configuration.people,
-    incomes: state.configuration.personIncomes,
-    categories: state.configuration.categories,
-    templates: state.configuration.categoryTemplates,
-  });
-  const annualSubsidies = summary.incomeByPerson.reduce((total, item) => total + item.amount * 2, 0);
-  const amountOf = (items: { personId: string; amount: number }[], personId: string) => items.find((item) => item.personId === personId)?.amount ?? 0;
+  const incomeByPerson = state.configuration.people.map((person) => ({ personId: person.id, amount: applicableIncome(state.configuration.personIncomes, person.id, referenceMonth) }));
+  const dailySpending = incomeByPerson.reduce((total, item) => {
+    const person = state.configuration.people.find((entry) => entry.id === item.personId);
+    return total + (item.amount * (person?.dailySpendingPercentage ?? 0)) / 100;
+  }, 0);
+  const annualSubsidies = incomeByPerson.reduce((total, item) => total + item.amount * 2, 0);
 
   function openCreatePerson() {
     setError("");
@@ -109,7 +112,7 @@ export function PeopleEditor() {
       } else {
         person = await entitiesClient.createPerson(personForm);
         setEditingPersonId(person.id);
-        setPersonForm({ name: person.name, dailySpendingPercentage: person.dailySpendingPercentage, emergencyFundMonths: person.emergencyFundMonths, individualFixedAmount: person.individualFixedAmount ?? 0 });
+        setPersonForm({ name: person.name, dailySpendingPercentage: person.dailySpendingPercentage, emergencyFundMonths: person.emergencyFundMonths });
         setState((current) => ({ ...current, configuration: { ...current.configuration, people: [...current.configuration.people, person] } }));
       }
 
@@ -196,11 +199,8 @@ export function PeopleEditor() {
       </div>
 
       <section className="salary-summary">
-        <article className="panel"><p className="eyebrow">Gastos variáveis</p><h2><Money value={summary.dailySpending} /></h2><p>Percentagem do dia-a-dia aplicada aos vencimentos.</p></article>
+        <article className="panel"><p className="eyebrow">Gastos variáveis</p><h2><Money value={dailySpending} /></h2><p>Percentagem do dia-a-dia aplicada aos vencimentos.</p></article>
         <article className="panel"><p className="eyebrow">Subsídios anuais</p><h2><Money value={annualSubsidies} /></h2><p>100% dos subsídios é destinado aos Goals.</p></article>
-        <article className="panel"><p className="eyebrow">Gastos fixos conjuntos</p><h2><Money value={summary.jointFixedTotal} /></h2><p>Partes iguais para a conta conjunta.</p></article>
-        <article className="panel"><p className="eyebrow">Gastos fixos individuais</p><h2><Money value={summary.individualFixedTotal} /></h2><p>Valor preenchido por pessoa.</p></article>
-        <article className="panel"><p className="eyebrow">Fundo de emergência</p><h2><Money value={summary.emergencyFund} /></h2><p>Calculado a partir das configurações pessoais.</p></article>
       </section>
 
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -209,20 +209,14 @@ export function PeopleEditor() {
         <div className="section-title people-section-title"><div><p className="eyebrow">Pessoas</p><h2>Gerir pessoas</h2></div><button className="secondary-button" onClick={openCreatePerson} disabled={loading}>+ Nova pessoa</button></div>
         {loading ? <p className="form-note">A carregar pessoas…</p> : <div className="person-table-wrap">
           <div className="person-table">
-            <div className="person-table-row person-table-header"><span>Pessoa</span><span>Vencimento</span><span>Subsídios</span><span>Gastos fixos individuais</span><span>Gastos fixos conjuntos</span><span>Fundo de emergência</span><span>Ação</span></div>
+            <div className="person-table-row person-table-header"><span>Pessoa</span><span>Vencimento</span><span>Subsídios</span><span>Ação</span></div>
             {state.configuration.people.map((person) => {
               const income = currentIncome(state.configuration.personIncomes, person.id, referenceMonth);
               const salary = income?.amount ?? 0;
-              const emergencyAmount = amountOf(summary.emergencyFundByPerson, person.id);
-              const minimum = amountOf(summary.minimumByPerson, person.id);
-              const individualFixed = amountOf(summary.individualFixedByPerson, person.id);
               return <div className="person-table-row" key={person.id}>
                 <strong className="person-table-name">{person.name}</strong>
                 <span><Money value={salary} /><small>{income ? `Válido desde ${income.validFrom}` : "Sem histórico salarial"}</small></span>
                 <span><Money value={salary * 2} /><small>2× o vencimento</small></span>
-                <span><Money value={individualFixed} /><small>Valor preenchido por pessoa</small></span>
-                <span><Money value={minimum} /><small>Partes iguais do template</small></span>
-                <span><Money value={emergencyAmount} /><small>{person.emergencyFundMonths} meses · gastos fixos</small></span>
                 <button className="entity-edit-button" type="button" title={`Editar ${person.name}`} aria-label={`Editar pessoa ${person.name}`} onClick={() => openEditPerson(person)}>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>
                 </button>
@@ -241,7 +235,6 @@ export function PeopleEditor() {
               <label className="entity-modal-field">Gastos variáveis (%)<input type="number" value={personForm.dailySpendingPercentage} onChange={(event) => setPersonForm((current) => ({ ...current, dailySpendingPercentage: Number(event.target.value) }))} /></label>
               <label className="entity-modal-field">Fundo de emergência (meses)<input type="number" value={personForm.emergencyFundMonths} onChange={(event) => setPersonForm((current) => ({ ...current, emergencyFundMonths: Number(event.target.value) }))} /></label>
             </div>
-            <label className="entity-modal-field">Gastos fixos individuais (€)<input type="number" min="0" step="0.01" value={personForm.individualFixedAmount} onChange={(event) => setPersonForm((current) => ({ ...current, individualFixedAmount: Number(event.target.value) }))} /></label>
             <p className="form-note fixed-bonus-note">Subsídios fixos para todos: junho e dezembro, no valor do vencimento. Os gastos fixos conjuntos são calculados e não se editam.</p>
             <div className="person-income-heading"><div><p className="eyebrow">Histórico salarial</p><h3>Vencimentos</h3></div><button className="secondary-button" type="button" onClick={addPersonIncomeDraft}>+ Alteração salarial</button></div>
             <div className="person-income-table">

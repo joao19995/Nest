@@ -43,13 +43,8 @@ function versionErrorResponse(error: unknown) {
   return null;
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const applicableTo = new URL(request.url).searchParams.get("applicableTo");
-    if (applicableTo !== null) {
-      if (!isValidMonth(applicableTo)) return NextResponse.json({ error: "Indica um mês válido (YYYY-MM)." }, { status: 400 });
-      return NextResponse.json(await goalTemplateRepository.findApplicable(applicableTo));
-    }
     return NextResponse.json(await goalTemplateRepository.findAll());
   } catch (error) {
     console.error("Could not list goal templates.", error);

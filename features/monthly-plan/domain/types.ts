@@ -3,7 +3,6 @@ export type Person = {
   name: string;
   dailySpendingPercentage: number;
   emergencyFundMonths: number;
-  individualFixedAmount: number;
 };
 
 export type PersonIncome = {

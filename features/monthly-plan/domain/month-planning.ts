@@ -66,11 +66,3 @@ export function calculateMonthContributions(input: {
   const jointSurplus = Math.max(0, contributionRequired - actualTotal);
   return { status: "ok", contributionRequired, jointSurplus, people };
 }
-
-// Template aplicável ao mês: o de validFrom mais recente que seja <= mês (null se não existir).
-export function resolveApplicableTemplateId(templates: { id: string; validFrom: string }[], month: string): string | null {
-  return templates
-    .filter((template) => template.validFrom <= month)
-    .sort((a, b) => a.validFrom.localeCompare(b.validFrom))
-    .at(-1)?.id ?? null;
-}

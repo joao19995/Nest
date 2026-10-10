@@ -1,13 +1,14 @@
 import { getPostgres } from "@/shared/lib/postgres";
 import { personRepository } from "@/shared/repositories/person-repository";
 import { categoryTemplateRepository } from "@/shared/repositories/category-template-repository";
-import { monthlyPlanRepository } from "@/shared/repositories/monthly-plan-repository";
 import { computeMonthFunding, computeYearFunding, type FundingInput, type MonthFunding, type YearFunding } from "@/features/goals/domain/goal-funding";
 import type { PersonIncome } from "@/features/monthly-plan/domain/types";
 
 // Carregamento dos dados do disponível para objetivos. O cálculo está em
-// features/goals/domain/goal-funding.ts. Cada pedido lê pessoas, rendimentos,
-// planos e templates uma única vez, para qualquer número de meses.
+// features/goals/domain/goal-funding.ts. A contribuição de cada mês vem do
+// template aplicável (nunca do plano mensal), por isso aqui não se lê
+// monthly_plan: cada pedido lê pessoas, rendimentos e templates uma única
+// vez, para qualquer número de meses.
 
 async function loadIncomes(): Promise<PersonIncome[]> {
   const sql = getPostgres();
@@ -17,23 +18,21 @@ async function loadIncomes(): Promise<PersonIncome[]> {
   return rows.map((row) => ({ id: row.id, personId: row.person_id, amount: Number(row.amount), validFrom: row.valid_from }));
 }
 
-async function loadFundingInput(plans: FundingInput["plans"]): Promise<FundingInput> {
+async function loadFundingInput(): Promise<FundingInput> {
   const [people, incomes, templates] = await Promise.all([
     personRepository.findAll(),
     loadIncomes(),
     categoryTemplateRepository.findAll(),
   ]);
-  return { people, incomes, plans, templates };
+  return { people, incomes, templates };
 }
 
 export type { MonthFunding, YearFunding };
 
 export async function getMonthFunding(month: string): Promise<MonthFunding> {
-  const plan = await monthlyPlanRepository.findByMonth(month);
-  return computeMonthFunding(month, await loadFundingInput(plan ? [plan] : []));
+  return computeMonthFunding(month, await loadFundingInput());
 }
 
 export async function getYearFunding(year: number): Promise<YearFunding> {
-  const plans = await monthlyPlanRepository.listByYear(year);
-  return computeYearFunding(year, await loadFundingInput(plans));
+  return computeYearFunding(year, await loadFundingInput());
 }
