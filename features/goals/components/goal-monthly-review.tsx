@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CalendarPlus, Lock, Pencil, Target } from "lucide-react";
 import { entitiesClient } from "@/shared/lib/entities-client";
+import { formatEuro } from "@/shared/ui/money";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LedgerCard, LedgerNumberInput } from "@/components/app/ledger-card";
 import type { GoalTemplate } from "../domain/goal-template";
-import type { Goal } from "../domain/types";
 import type { YearFunding } from "@/shared/lib/goal-funding";
 import type { GoalPlanView } from "@/shared/repositories/goal-plan-repository";
 
@@ -12,13 +19,12 @@ function displayMonth(month: string) {
 }
 
 function euro(value: number) {
-  return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(value);
+  return formatEuro(value);
 }
 
 // Revisão mensal dos objetivos de um mês (planeado vs reservado).
 // Vive na aba Mês; a aba Objetivos guarda a visão anual, o template e a gestão.
 export function GoalMonthlyReview({ month }: { month: string }) {
-  const [goals, setGoals] = useState<Goal[]>([]);
   const [templates, setTemplates] = useState<GoalTemplate[]>([]);
   const [yearPlans, setYearPlans] = useState<GoalPlanView[]>([]);
   const [yearFunding, setYearFunding] = useState<YearFunding | null>(null);
@@ -29,16 +35,11 @@ export function GoalMonthlyReview({ month }: { month: string }) {
   const [actualDrafts, setActualDrafts] = useState<Record<string, string>>({});
   // Planeado é só-leitura por omissão; o lápis abre a edição de uma linha.
   const [editingPlannedIds, setEditingPlannedIds] = useState<Record<string, boolean>>({});
-  const [monthNote, setMonthNote] = useState("");
 
   const year = Number(month.slice(0, 4));
 
   async function reloadCatalog() {
-    const [loadedGoals, loadedTemplates] = await Promise.all([
-      entitiesClient.getGoals(),
-      entitiesClient.getGoalTemplates(),
-    ]);
-    setGoals(loadedGoals);
+    const loadedTemplates = await entitiesClient.getGoalTemplates();
     setTemplates(loadedTemplates.sort((a, b) => a.validFrom.localeCompare(b.validFrom)));
   }
 
@@ -65,7 +66,6 @@ export function GoalMonthlyReview({ month }: { month: string }) {
     setPlannedDrafts({});
     setActualDrafts({});
     setEditingPlannedIds({});
-    setMonthNote("");
     void reloadYear(year);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
@@ -78,12 +78,6 @@ export function GoalMonthlyReview({ month }: { month: string }) {
 
   const plan = planByMonth.get(month) ?? null;
   const funding = fundingByMonth.get(month) ?? null;
-
-  function goalName(goalId: string) {
-    return goals.find((item) => item.id === goalId)?.name
-      ?? plan?.allocations.find((item) => item.goalId === goalId)?.goalName
-      ?? "Objetivo arquivado";
-  }
 
   const storedPlanned = useMemo(() => new Map((plan?.allocations ?? []).map((item) => [item.goalId, item.planned])), [plan]);
   const editedPlanned = useMemo(
@@ -166,7 +160,6 @@ export function GoalMonthlyReview({ month }: { month: string }) {
     if (!plan || plan.closed) return;
     if (!window.confirm(`Guardar e fechar ${displayMonth(month)}? O planeado e o reservado ficam imutáveis.`)) return;
     setError("");
-    setMonthNote("");
     for (const [goalId, raw] of Object.entries(actualDrafts)) {
       const value = Number(raw);
       if (raw.trim() === "" || !Number.isFinite(value) || value < 0) {
@@ -209,84 +202,123 @@ export function GoalMonthlyReview({ month }: { month: string }) {
   const totalActual = plan?.allocations.reduce((sum, item) => sum + item.actual, 0) ?? 0;
 
   return (
-    <>
-      {error && <p className="form-error" role="alert">{error}</p>}
+    <div className="flex flex-col gap-3">
+      {error && <Alert variant="destructive">{error}</Alert>}
+
+      {yearLoading && (
+        <div className="flex flex-col gap-3" aria-label="A carregar os objetivos do mês">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Skeleton className="h-[125px]" />
+            <Skeleton className="h-[125px]" />
+            <Skeleton className="h-[125px]" />
+          </div>
+          <Skeleton className="h-[180px]" />
+        </div>
+      )}
 
       {!yearLoading && !plan && (
-        <section className="settings-section">
-          <div className="section-title"><div><p className="eyebrow">Objetivos · mês</p><h2>{displayMonth(month)}</h2></div></div>
-          <p className="form-note">
-            {funding
-              ? `Disponível calculado: ${euro(funding.available)} (ordenado ${euro(funding.incomeNormal)} − contribuição ${euro(funding.contributionRequired)} − diário ${euro(funding.dailyAllowance)}${funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}).`
-              : "A calcular o disponível…"}
-            {!templates.length ? " Cria primeiro a tabela anual na aba Objetivos." : ""}
-          </p>
-          <div className="editor-actions">
-            <button className="save-button" onClick={() => void createMonth()} disabled={busy || !funding}>
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-mint-soft text-primary-dark">
+                <Target size={17} aria-hidden="true" />
+              </span>
+              <div className="flex flex-col gap-0.5">
+                <p className="m-0 text-[10px] font-bold uppercase tracking-[1.5px] text-primary">Objetivos · mês</p>
+                <CardTitle className="capitalize">{displayMonth(month)}</CardTitle>
+              </div>
+              <Badge variant="outline" className="ml-auto">Por validar</Badge>
+            </div>
+            <CardDescription>
+              {funding
+                ? `Disponível calculado: ${euro(funding.available)} (ordenado ${euro(funding.incomeNormal)} − contribuição ${euro(funding.contributionRequired)} − diário ${euro(funding.dailyAllowance)}${funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}).`
+                : "A calcular o disponível…"}
+              {!templates.length ? " Cria primeiro a tabela anual na aba Objetivos." : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="justify-start">
+            <Button onClick={() => void createMonth()} disabled={busy || !funding}>
+              <CalendarPlus size={14} data-icon="inline-start" aria-hidden="true" />
               {busy ? "A criar…" : "Criar mês"}
-            </button>
-          </div>
-        </section>
+            </Button>
+          </CardFooter>
+        </Card>
       )}
 
       {!yearLoading && plan && (
-        <section className="settings-section">
-          <div className="section-title">
-            <div><p className="eyebrow">Objetivos · revisão mensal</p><h2>{displayMonth(month)} {plan.closed ? "(Fechado)" : "(Aberto)"}</h2></div>
-          </div>
-          {plan.closed && <p className="form-note">Mês fechado — planeado e reservado são apenas leitura e nunca mudam.</p>}
-          <section className="category-totals">
-            <article className="panel"><p className="eyebrow">Disponível</p><h2>{euro(plan.availableAmount)}</h2></article>
-            <article className="panel"><p className="eyebrow">Planeado</p><h2>{euro(totalPlanned)}</h2></article>
-            <article className="panel"><p className="eyebrow">Reservado</p><h2>{euro(totalActual)}</h2></article>
-            <article className="panel"><p className="eyebrow">Diferença</p><h2>{euro(plan.availableAmount - totalPlanned)}</h2></article>
-          </section>
-          {funding && <p className="form-note">Cálculo: ordenado {euro(funding.incomeNormal)} − contribuição {euro(funding.contributionRequired)} − diário {euro(funding.dailyAllowance)}{funding.bonus > 0 ? ` + bónus ${euro(funding.bonus)}` : ""}.</p>}
-
-          <div className="category-table month-table">
-            <div className="category-table-row category-table-header"><span>Objetivo</span><span>Planeado</span><span>Reservado</span></div>
-            {plan.allocations.map((item) => (
-              <div className="category-table-row" key={item.goalId}>
-                <strong>{item.goalName}</strong>
-                <span>
-                  {editingPlannedIds[item.goalId]
-                    ? <input type="number" min="0" step="0.01" aria-label={`Planeado de ${item.goalName}`} disabled={plan.closed}
-                      value={plannedDrafts[item.goalId] ?? item.planned}
-                      onChange={(event) => setPlannedDrafts((current) => ({ ...current, [item.goalId]: event.target.value }))} />
-                    : <>{euro(item.planned)} </>}
-                  {!plan.closed && <button className="entity-edit-button" type="button"
-                    title={editingPlannedIds[item.goalId] ? `Fechar edição de ${item.goalName}` : `Editar planeado de ${item.goalName} (só exceções)`}
-                    aria-label={editingPlannedIds[item.goalId] ? `Fechar edição de ${item.goalName}` : `Editar planeado de ${item.goalName}`}
-                    onClick={() => togglePlannedEdit(item.goalId)}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>
-                  </button>}
-                </span>
-                <span><input type="number" min="0" step="0.01" aria-label={`Reservado de ${item.goalName}`} disabled={plan.closed}
-                  value={actualDrafts[item.goalId] ?? item.actual}
-                  onChange={(event) => setActualDrafts((current) => ({ ...current, [item.goalId]: event.target.value }))}
-                  onBlur={() => void saveActual(item.goalId)} /></span>
-              </div>
-            ))}
-          </div>
-
-          {!plan.closed && (
-            <>
-              <p className="form-note">
-                O reservado vem pré-preenchido com o planeado; o planeado edita-se pelo lápis (só exceções).
-                Guardar distribui meses frescos pela tabela anual e recalcula os futuros meses abertos.
-              </p>
-              {monthNote && <p className="form-note">{monthNote}</p>}
-              <div className="editor-actions">
-                <button className="save-button" onClick={() => void saveAndClose()} disabled={busy}>
-                  {busy ? "A guardar…" : "Guardar e fechar mês"}
-                </button>
-              </div>
-            </>
+        <LedgerCard
+          icon={
+            <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-mint-soft text-primary-dark">
+              <Target size={17} aria-hidden="true" />
+            </span>
+          }
+          eyebrow="Objetivos · revisão mensal"
+          closed={plan.closed}
+          totalsAriaLabel="Totais dos objetivos do mês"
+          plannedTotal={totalPlanned}
+          actualTotal={totalActual}
+          tone="save"
+          entityLabel="Objetivo"
+          rows={plan.allocations.map((item) => {
+            const raw = actualDrafts[item.goalId];
+            const parsed = raw === undefined ? item.actual : Number(raw);
+            return {
+              id: item.goalId,
+              name: item.goalName,
+              planned: item.planned,
+              actual: Number.isFinite(parsed) ? parsed : item.actual,
+            };
+          })}
+          renderPlanned={(row) => {
+            const editing = editingPlannedIds[row.id];
+            const label = row.name;
+            return (
+              <span className="flex items-center justify-end gap-1">
+                {editing ? (
+                  <LedgerNumberInput
+                    aria-label={`Planeado de ${label}`}
+                    disabled={plan.closed}
+                    value={plannedDrafts[row.id] ?? row.planned}
+                    onChange={(event) => setPlannedDrafts((current) => ({ ...current, [row.id]: event.target.value }))}
+                  />
+                ) : (
+                  <span className="tabular-nums text-muted">{euro(row.planned)}</span>
+                )}
+                {!plan.closed && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    title={editing ? `Fechar edição de ${label}` : `Editar planeado de ${label} (só exceções)`}
+                    aria-label={editing ? `Fechar edição de ${label}` : `Editar planeado de ${label}`}
+                    onClick={() => togglePlannedEdit(row.id)}
+                    className="size-7 shrink-0"
+                  >
+                    <Pencil size={13} aria-hidden="true" />
+                  </Button>
+                )}
+              </span>
+            );
+          }}
+          renderActual={(row) => (
+            <LedgerNumberInput
+              aria-label={`Valor real de ${row.name}`}
+              disabled={plan.closed}
+              value={actualDrafts[row.id] ?? plan.allocations.find((item) => item.goalId === row.id)?.actual ?? 0}
+              onChange={(event) => setActualDrafts((current) => ({ ...current, [row.id]: event.target.value }))}
+              onBlur={() => void saveActual(row.id)}
+            />
           )}
-        </section>
+          footer={
+            !plan.closed ? (
+              <Button onClick={() => void saveAndClose()} disabled={busy}>
+                <Lock size={14} data-icon="inline-start" aria-hidden="true" />
+                {busy ? "A fechar…" : "Fechar mês"}
+              </Button>
+            ) : undefined
+          }
+        />
       )}
-
-      {yearLoading && <p className="form-note">A carregar os objetivos do mês…</p>}
-    </>
+    </div>
   );
 }

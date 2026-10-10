@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { entitiesClient } from "@/shared/lib/entities-client";
 import { AppNav } from "@/shared/ui/app-nav";
+import { formatEuro } from "@/shared/ui/money";
 import { isValidTemplateTotal, totalPercentage } from "../domain/goal-template";
 import type { GoalTemplateEntry } from "../domain/goal-template";
 import type { Goal, GoalPriority, GoalTimeline, GoalYearReview } from "../domain/types";
@@ -31,7 +32,7 @@ function shortMonth(month: string) {
 }
 
 function euro(value: number) {
-  return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(value);
+  return formatEuro(value);
 }
 
 type FutureChange = {
@@ -404,7 +405,7 @@ export function GoalsPage() {
         ) : (
           <div className="category-table month-table">
             <div className="category-table-row category-table-header">
-              <span>Mês</span><span>Estado</span><span>Disponível</span><span>Planeado</span><span>Reservado</span>
+              <span>Mês</span><span>Estado</span><span className="num">Disponível</span><span className="num">Planeado</span><span className="num">Reservado</span>
             </div>
             {Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`).map((item) => {
               const itemPlan = planByMonth.get(item);
@@ -415,9 +416,9 @@ export function GoalsPage() {
                 <div className="category-table-row" key={item}>
                   <strong>{shortMonth(item)}{isCurrent ? " •" : ""}</strong>
                   <span>{status}</span>
-                  <span>{itemFunding ? euro(itemFunding.available) : itemPlan ? euro(itemPlan.availableAmount) : "—"}</span>
-                  <span>{itemPlan ? euro(itemPlan.allocations.reduce((sum, entry) => sum + entry.planned, 0)) : "—"}</span>
-                  <span>{itemPlan ? euro(itemPlan.allocations.reduce((sum, entry) => sum + entry.actual, 0)) : "—"}</span>
+                  <span className="num">{itemFunding ? euro(itemFunding.available) : itemPlan ? euro(itemPlan.availableAmount) : "—"}</span>
+                  <span className="num">{itemPlan ? euro(itemPlan.allocations.reduce((sum, entry) => sum + entry.planned, 0)) : "—"}</span>
+                  <span className="num">{itemPlan ? euro(itemPlan.allocations.reduce((sum, entry) => sum + entry.actual, 0)) : "—"}</span>
                 </div>
               );
             })}
@@ -433,14 +434,14 @@ export function GoalsPage() {
           <p className="form-note">A carregar o ano…</p>
         ) : (
           <div className="category-table goal-tracking">
-            <div className="category-table-row category-table-header"><span>Objetivo</span><span>Alvo</span><span>Planeado</span><span>Reservado</span><span>Falta</span><span>Estado</span></div>
+            <div className="category-table-row category-table-header"><span>Objetivo</span><span className="num">Alvo</span><span className="num">Planeado</span><span className="num">Reservado</span><span className="num">Falta</span><span>Estado</span></div>
             {goalYearTracking({ goals, plans: yearPlans, year, currentMonth: currentMonth() }).map((row) => (
               <div className="category-table-row" key={row.goalId}>
                 <strong>{row.goalName}</strong>
-                <span>{euro(row.target)}</span>
-                <span>{euro(row.plannedTotal)}</span>
-                <span>{euro(row.actualTotal)}</span>
-                <span>{euro(row.missing)}</span>
+                <span className="num">{euro(row.target)}</span>
+                <span className="num">{euro(row.plannedTotal)}</span>
+                <span className="num">{euro(row.actualTotal)}</span>
+                <span className="num">{euro(row.missing)}</span>
                 <span>{row.atRisk ? <span className="risk-flag">Em risco</span> : <span className="ok-flag">Em dia</span>}</span>
               </div>
             ))}
@@ -555,12 +556,12 @@ export function GoalsPage() {
                 </p>
                 {templatePreview.affected.length > 0 && (
                   <div className="category-table">
-                    <div className="category-table-row category-table-header"><span>Mês</span><span>Antes</span><span>Depois</span></div>
+                    <div className="category-table-row category-table-header"><span>Mês</span><span className="num">Antes</span><span className="num">Depois</span></div>
                     {templatePreview.affected.map((change) => (
                       <div className="category-table-row" key={change.month}>
                         <strong>{displayMonth(change.month)}</strong>
-                        <span>{euro(change.before.reduce((sum, entry) => sum + entry.planned, 0))}</span>
-                        <span>{euro(change.after.reduce((sum, entry) => sum + entry.planned, 0))}</span>
+                        <span className="num">{euro(change.before.reduce((sum, entry) => sum + entry.planned, 0))}</span>
+                        <span className="num">{euro(change.after.reduce((sum, entry) => sum + entry.planned, 0))}</span>
                       </div>
                     ))}
                   </div>

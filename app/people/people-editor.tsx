@@ -209,14 +209,14 @@ export function PeopleEditor() {
         <div className="section-title people-section-title"><div><p className="eyebrow">Pessoas</p><h2>Gerir pessoas</h2></div><button className="secondary-button" onClick={openCreatePerson} disabled={loading}>+ Nova pessoa</button></div>
         {loading ? <p className="form-note">A carregar pessoas…</p> : <div className="person-table-wrap">
           <div className="person-table">
-            <div className="person-table-row person-table-header"><span>Pessoa</span><span>Vencimento</span><span>Subsídios</span><span>Ação</span></div>
+            <div className="person-table-row person-table-header"><span>Pessoa</span><span className="num">Vencimento</span><span className="num">Subsídios</span><span>Ação</span></div>
             {state.configuration.people.map((person) => {
               const income = currentIncome(state.configuration.personIncomes, person.id, referenceMonth);
               const salary = income?.amount ?? 0;
               return <div className="person-table-row" key={person.id}>
                 <strong className="person-table-name">{person.name}</strong>
-                <span><Money value={salary} /><small>{income ? `Válido desde ${income.validFrom}` : "Sem histórico salarial"}</small></span>
-                <span><Money value={salary * 2} /><small>2× o vencimento</small></span>
+                <span className="num"><Money value={salary} /><small>{income ? `Válido desde ${income.validFrom}` : "Sem histórico salarial"}</small></span>
+                <span className="num"><Money value={salary * 2} /><small>2× o vencimento</small></span>
                 <button className="entity-edit-button" type="button" title={`Editar ${person.name}`} aria-label={`Editar pessoa ${person.name}`} onClick={() => openEditPerson(person)}>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>
                 </button>

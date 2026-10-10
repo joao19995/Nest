@@ -1,9 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CalendarPlus, HandCoins, Lock, Receipt } from "lucide-react";
 import { entitiesClient } from "@/shared/lib/entities-client";
 import { emptyFinanceState, loadFinanceState, showFinanceStorageError } from "@/shared/lib/finance-storage";
 import { AppNav } from "@/shared/ui/app-nav";
+import { formatEuro } from "@/shared/ui/money";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LedgerCard, LedgerNumberInput } from "@/components/app/ledger-card";
+import { MonthControls } from "@/components/app/month-controls";
 import { GoalMonthlyReview } from "@/features/goals/components/goal-monthly-review";
 import { calculateMonthContributions, totalActual, totalPlanned } from "../domain/month-planning";
 import type { FinanceState, MonthlyPlanEntryView, MonthlyPlanView } from "../domain/types";
@@ -19,11 +29,12 @@ function shiftMonth(month: string, delta: number) {
 }
 
 function displayMonth(month: string) {
-  return new Intl.DateTimeFormat("pt-PT", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+  const label = new Intl.DateTimeFormat("pt-PT", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function euro(value: number) {
-  return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(value);
+  return formatEuro(value);
 }
 
 export function MonthlyPlanPage() {
@@ -76,7 +87,7 @@ export function MonthlyPlanPage() {
     const value = Number(raw);
     setDrafts((current) => { const next = { ...current }; delete next[entry.id]; return next; });
     if (raw.trim() === "" || !Number.isFinite(value) || value < 0) {
-      setError("O valor actual deve ser um número não negativo.");
+      setError("O valor real deve ser um número não negativo.");
       return;
     }
     if (value === entry.actual) return;
@@ -84,7 +95,7 @@ export function MonthlyPlanPage() {
     try {
       setPlan(await entitiesClient.updateMonthlyPlanActual(plan.id, entry.id, value));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível guardar o valor actual.");
+      setError(cause instanceof Error ? cause.message : "Não foi possível guardar o valor real.");
     }
   }
 
@@ -116,87 +127,160 @@ export function MonthlyPlanPage() {
     return Number.isFinite(value) ? value : entry.actual;
   }
 
+  function personName(personId: string) {
+    return state.configuration.people.find((person) => person.id === personId)?.name ?? "—";
+  }
+
   return (
-    <main className="shell compact-shell">
+    <main className="mx-auto w-full max-w-[960px] px-4 pb-14 sm:px-8">
       <AppNav active="month" />
-      <div className="page-heading">
-        <p className="eyebrow">Execução mensal</p>
-        <h1>{displayMonth(month)}</h1>
-        <p className="lede">Os valores planeados vêm do template aplicável e ficam fixos. Preenche os valores reais.</p>
+
+      <div className="flex flex-col gap-4 pb-6 pt-8">
+        <p className="m-0 text-[10px] font-bold uppercase tracking-[1.5px] text-primary">
+          Execução mensal
+        </p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <h1 className="m-0 font-display text-[28px] font-extrabold tracking-[-0.8px] text-ink sm:text-[32px]">
+            {displayMonth(month)}
+          </h1>
+          <span className="ml-auto flex">
+            <MonthControls
+              currentLabel={displayMonth(month)}
+              onPrev={() => setMonth((current) => shiftMonth(current, -1))}
+              onNext={() => setMonth((current) => shiftMonth(current, 1))}
+              prevLabel="Mês anterior"
+              nextLabel="Mês seguinte"
+            />
+          </span>
+        </div>
       </div>
 
-      <div className="month-controls">
-        <button className="month-arrow" onClick={() => setMonth((current) => shiftMonth(current, -1))} aria-label="Mês anterior">‹</button>
-        <span className="month-current">{displayMonth(month)}</span>
-        <button className="month-arrow" onClick={() => setMonth((current) => shiftMonth(current, 1))} aria-label="Mês seguinte">›</button>
-      </div>
+      {error && <Alert variant="destructive" className="mb-3">{error}</Alert>}
 
-      {error && <p className="form-error" role="alert">{error}</p>}
-
-      {status === "loading" && <p className="form-note">A carregar o mês…</p>}
-
-      {status === "missing" && <section className="settings-section">
-        <p className="form-note">Este mês ainda não foi criado. Ao criar, copia-se o template aplicável a {displayMonth(month)}.</p>
-        <div className="editor-actions"><button className="save-button" onClick={() => void createPlan()} disabled={busy}>{busy ? "A criar…" : "Criar mês"}</button></div>
-      </section>}
-
-      {status === "ready" && plan && <>
-        {plan.closed && <p className="form-note">Mês fechado — apenas leitura.</p>}
-
-        <section className="category-totals">
-          <article className="panel"><p className="eyebrow">Total planeado</p><h2>{euro(planned)}</h2><p>Snapshot do template.</p></article>
-          <article className="panel"><p className="eyebrow">Total actual</p><h2>{euro(actual)}</h2><p>Valores reais introduzidos.</p></article>
-          <article className="panel"><p className="eyebrow">Diferença</p><h2>{euro(actual - planned)}</h2><p>Actual − planeado.</p></article>
-        </section>
-
-        <section className="settings-section">
-          <div className="section-title"><div><p className="eyebrow">Despesas</p><h2>Planeado e actual</h2></div></div>
-          <div className="category-table month-table">
-            <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Planeado</span><span>Actual</span><span>Diferença</span></div>
-            {entries.map((entry) => {
-              const value = displayedActual(entry);
-              return <div className="category-table-row" key={entry.id}>
-                <strong>{entry.categoryName}</strong>
-                <span>{entry.accountName}</span>
-                <span>{euro(entry.planned)}</span>
-                <span>
-                  <input type="number" min="0" step="0.01" aria-label={`Valor actual de ${entry.categoryName}`} disabled={plan.closed}
-                    value={drafts[entry.id] ?? entry.actual}
-                    onChange={(event) => setDrafts((current) => ({ ...current, [entry.id]: event.target.value }))}
-                    onBlur={() => void saveActual(entry)} />
-                </span>
-                <span>{euro(value - entry.planned)}</span>
-              </div>;
-            })}
+      {status === "loading" && (
+        <div className="flex flex-col gap-3" aria-label="A carregar o mês">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Skeleton className="h-[125px]" />
+            <Skeleton className="h-[125px]" />
+            <Skeleton className="h-[125px]" />
           </div>
-        </section>
+          <Skeleton className="h-[220px]" />
+        </div>
+      )}
 
-        <section className="settings-section">
-          <div className="section-title"><div><p className="eyebrow">Contribuições</p><h2>Quanto cada pessoa transfere</h2></div></div>
-          {contributions?.status === "no-income" && <p className="form-error" role="alert">{contributions.message}</p>}
-          {contributions?.status === "ok" && <>
-            <p className="form-note">Base de contribuição: {euro(contributions.contributionRequired)} (maior entre o planeado e o actual). Lucro da conta conjunta: {euro(contributions.jointSurplus)} (base − actual, só informativo; não cobre défices).</p>
-            <div className="category-table month-contributions">
-              <div className="category-table-row category-table-header"><span>Pessoa</span><span>Quota</span><span>Já pago pela conta pessoal</span><span>A transferir para a conjunta</span><span>A receber da conjunta</span></div>
-              {contributions.people.map((item) => <div className="category-table-row" key={item.personId}>
-                <strong>{state.configuration.people.find((person) => person.id === item.personId)?.name ?? "—"}</strong>
-                <span>{euro(item.quota)}</span>
-                <span>{euro(item.personalActual)}</span>
-                <span>{euro(item.transferToJoint)}</span>
-                <span>{euro(item.transferToPerson)}</span>
-              </div>)}
-            </div>
-          </>}
-        </section>
+      {status === "missing" && (
+        <Card>
+          <CardHeader>
+            <span className="grid size-10 place-items-center rounded-[10px] bg-mint-soft text-primary-dark">
+              <CalendarPlus size={18} aria-hidden="true" />
+            </span>
+            <CardTitle className="mt-2">Este mês ainda não foi criado</CardTitle>
+            <CardDescription>
+              Ao criar, copia-se o template aplicável a {displayMonth(month)}. O planeado fica logo fixo.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="justify-start">
+            <Button onClick={() => void createPlan()} disabled={busy}>
+              {busy ? "A criar…" : "Criar mês"}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
 
-        {!plan.closed && <div className="editor-actions"><button className="save-button" onClick={() => void closePlan()} disabled={busy}>{busy ? "A fechar…" : "Fechar mês"}</button></div>}
-      </>}
+      {status === "ready" && plan && (
+        <div className="flex flex-col gap-3">
+          <LedgerCard
+            icon={
+              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-mint-soft text-primary-dark">
+                <Receipt size={17} aria-hidden="true" />
+              </span>
+            }
+            eyebrow="Despesas"
+            closed={plan.closed}
+            totalsAriaLabel="Totais do mês"
+            plannedTotal={planned}
+            actualTotal={actual}
+            statNotes={["Snapshot do template.", "Valores reais introduzidos.", "Real − planeado."]}
+            entityLabel="Categoria"
+            rows={entries.map((entry) => ({
+              id: entry.id,
+              name: entry.categoryName,
+              sub: entry.accountName,
+              planned: entry.planned,
+              actual: displayedActual(entry),
+            }))}
+            renderActual={(row) => {
+              const entry = entries.find((item) => item.id === row.id);
+              if (!entry) return null;
+              return (
+                <LedgerNumberInput
+                  aria-label={`Valor real de ${entry.categoryName}`}
+                  disabled={plan.closed}
+                  value={drafts[entry.id] ?? entry.actual}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [entry.id]: event.target.value }))}
+                  onBlur={() => void saveActual(entry)}
+                />
+              );
+            }}
+            emptyMessage="Este mês não tem categorias. Verifica o template aplicável."
+            footer={
+              !plan.closed ? (
+                <Button onClick={() => void closePlan()} disabled={busy}>
+                  <Lock size={14} data-icon="inline-start" aria-hidden="true" />
+                  {busy ? "A fechar…" : "Fechar mês"}
+                </Button>
+              ) : undefined
+            }
+          />
 
-      <div className="page-heading">
-        <p className="eyebrow">Objetivos</p>
-        <h1>Objetivos do mês</h1>
-        <p className="lede">Distribuição do disponível pelos objetivos. Separado das despesas e contribuições acima.</p>
-      </div>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-terra-soft text-terra-dark">
+                  <HandCoins size={17} aria-hidden="true" />
+                </span>
+                <p className="m-0 text-[10px] font-bold uppercase tracking-[1.5px] text-primary">Contribuições</p>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {contributions?.status === "no-income" && (
+                <Alert variant="destructive">{contributions.message}</Alert>
+              )}
+              {contributions?.status === "ok" && (
+                <ul className="m-0 flex list-none flex-col gap-2 p-0">
+                    {contributions.people.map((item) => {
+                      const name = personName(item.personId);
+                      const result = item.transferToJoint > 0.005
+                        ? { label: `Transferir ${euro(item.transferToJoint)}`, variant: "open" as const }
+                        : item.transferToPerson > 0.005
+                          ? { label: `Receber ${euro(item.transferToPerson)}`, variant: "closed" as const }
+                          : { label: "Certo", variant: "muted" as const };
+                      return (
+                        <li
+                          key={item.personId}
+                          className="flex flex-wrap items-center gap-3 rounded-[10px] border border-solid border-line-soft bg-paper px-3 py-2.5"
+                        >
+                          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-terra-soft text-[13px] font-bold text-terra-dark" aria-hidden="true">
+                            {name.charAt(0).toUpperCase()}
+                          </span>
+                          <span className="flex min-w-[140px] flex-1 flex-col gap-0.5">
+                            <strong className="text-[13px] text-ink">{name}</strong>
+                            <span className="text-[11px] text-muted">
+                              Quota {euro(item.quota)} · já pago {euro(item.personalActual)}
+                            </span>
+                          </span>
+                          <Badge variant={result.variant}>{result.label}</Badge>
+                        </li>
+                      );
+                    })}
+                  </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Separator className="mb-6 mt-8" />
 
       <GoalMonthlyReview month={month} />
     </main>

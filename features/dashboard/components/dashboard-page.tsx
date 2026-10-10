@@ -91,19 +91,19 @@ export function DashboardPage() {
         {chosenCategories.length > 0 && <div className="annual-table">
           <div className="category-table-row category-table-header" style={{ gridTemplateColumns: gridColumns, minWidth: 0 }}>
             <span>Mês</span>
-            {chosenCategories.map((category) => <span key={category.id}>{category.name}</span>)}
-            <span>Planeado</span>
-            <span>Actual</span>
-            <span>Desvio €</span>
-            <span>Desvio %</span>
+            {chosenCategories.map((category) => <span className="num" key={category.id}>{category.name}</span>)}
+            <span className="num">Planeado</span>
+            <span className="num">Actual</span>
+            <span className="num">Desvio €</span>
+            <span className="num">Desvio %</span>
           </div>
           {rows.map((row) => <div className="category-table-row" key={row.month} style={{ gridTemplateColumns: gridColumns, minWidth: 0 }}>
             <strong>{monthLabel(row.month)}{!row.hasPlan && <small>Sem plano</small>}</strong>
-            {chosenCategories.map((category) => <span key={category.id}>{row.actualByCategory[category.id] === null || row.actualByCategory[category.id] === undefined ? "" : <Money value={row.actualByCategory[category.id]!} />}</span>)}
-            <span>{row.plannedTotal === null ? "" : <Money value={row.plannedTotal} />}</span>
-            <span>{row.actualTotal === null ? "" : <Money value={row.actualTotal} />}</span>
-            <span>{row.deviation === null ? "" : <Money value={row.deviation} />}</span>
-            <span>{percent(row.deviationPct)}</span>
+            {chosenCategories.map((category) => <span className="num" key={category.id}>{row.actualByCategory[category.id] === null || row.actualByCategory[category.id] === undefined ? "" : <Money value={row.actualByCategory[category.id]!} />}</span>)}
+            <span className="num">{row.plannedTotal === null ? "" : <Money value={row.plannedTotal} />}</span>
+            <span className="num">{row.actualTotal === null ? "" : <Money value={row.actualTotal} />}</span>
+            <span className="num">{row.deviation === null ? "" : <Money value={row.deviation} />}</span>
+            <span className="num">{percent(row.deviationPct)}</span>
           </div>)}
         </div>}
       </section>}

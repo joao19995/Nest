@@ -232,11 +232,11 @@ export function CategoriesEditor() {
             : `Template a partir de ${templateDate}. A conta pertence ao template, não à categoria.`}
         </p>
         <div className="category-table category-template">
-          <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Valor esperado</span><span>Tipo</span></div>
+          <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span className="num">Valor esperado</span><span>Tipo</span></div>
           {visibleEntries.map((entry) => <div className="category-table-row" key={entry.categoryId}>
             <strong>{entry.categoryName}{!entry.categoryActive && <small>Categoria inativa · histórico</small>}</strong>
             <span>{entry.accountName}{entry.accountActive ? "" : " (inativa)"}</span>
-            <span><Money value={entry.expectedAmount} /></span>
+            <span className="num"><Money value={entry.expectedAmount} /></span>
             <span>{entry.categoryType === "FIXED" ? "Fixa" : "Variável"}</span>
           </div>)}
           {!visibleEntries.length && <p className="form-note">Este template não tem categorias ativas.</p>}
