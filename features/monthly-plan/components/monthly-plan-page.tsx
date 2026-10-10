@@ -152,15 +152,15 @@ export function MonthlyPlanPage() {
         <section className="settings-section">
           <div className="section-title"><div><p className="eyebrow">Despesas</p><h2>Planeado e actual</h2></div></div>
           <div className="category-table month-table">
-            <div className="category-table-row category-table-header"><span>Item · Categoria</span><span>Conta</span><span>Planeado</span><span>Actual</span><span>Diferença</span></div>
+            <div className="category-table-row category-table-header"><span>Categoria</span><span>Conta</span><span>Planeado</span><span>Actual</span><span>Diferença</span></div>
             {entries.map((entry) => {
               const value = displayedActual(entry);
               return <div className="category-table-row" key={entry.id}>
-                <strong>{entry.itemName}<small>{entry.categoryName}{!entry.itemActive && " · item inativo"}</small></strong>
+                <strong>{entry.categoryName}</strong>
                 <span>{entry.accountName}</span>
                 <span>{euro(entry.planned)}</span>
                 <span>
-                  <input type="number" min="0" step="0.01" aria-label={`Valor actual de ${entry.itemName}`} disabled={plan.closed}
+                  <input type="number" min="0" step="0.01" aria-label={`Valor actual de ${entry.categoryName}`} disabled={plan.closed}
                     value={drafts[entry.id] ?? entry.actual}
                     onChange={(event) => setDrafts((current) => ({ ...current, [entry.id]: event.target.value }))}
                     onBlur={() => void saveActual(entry)} />

@@ -23,10 +23,10 @@ const templates: CategoryTemplate[] = [{
   id: "t1",
   validFrom: "2026-01",
   entries: [
-    { itemId: "casa", categoryId: "casa", accountId: "conjunta", expectedAmount: 1000, active: true },
-    { itemId: "carro", categoryId: "carro", accountId: "conjunta", expectedAmount: 100, active: true },
-    { itemId: "cao", categoryId: "cao", accountId: "conjunta", expectedAmount: 80, active: true },
-    { itemId: "extras", categoryId: "extras", accountId: "joao", expectedAmount: 180, active: true },
+    { categoryId: "casa", accountId: "conjunta", expectedAmount: 1000, active: true },
+    { categoryId: "carro", accountId: "conjunta", expectedAmount: 100, active: true },
+    { categoryId: "cao", accountId: "conjunta", expectedAmount: 80, active: true },
+    { categoryId: "extras", accountId: "joao", expectedAmount: 180, active: true },
   ],
 }];
 
@@ -68,7 +68,7 @@ describe("computePeopleSummary", () => {
   });
 
   it("ignora entradas inativas e categorias inativas nos fixos", () => {
-    const withInactive: CategoryTemplate[] = [{ ...templates[0], entries: [...templates[0].entries, { itemId: "x", categoryId: "carro", accountId: "conjunta", expectedAmount: 500, active: false }] }];
+    const withInactive: CategoryTemplate[] = [{ ...templates[0], entries: [...templates[0].entries, { categoryId: "carro", accountId: "conjunta", expectedAmount: 500, active: false }] }];
     const summary = computePeopleSummary({ month: "2026-01", people, incomes, categories, templates: withInactive });
     expect(summary.templateExpectedTotal).toBe(1360);
     const inactiveFixed: Category[] = categories.map((category) => category.id === "carro" ? { ...category, type: "FIXED" as const, active: false } : category);

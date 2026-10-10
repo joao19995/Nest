@@ -7,7 +7,7 @@ const NATCH = "natch";
 const JOINT_OWNER = null;
 
 function entry(overrides: Partial<MonthlyPlanEntryView> & Pick<MonthlyPlanEntryView, "planned" | "actual" | "accountOwnerPersonId">): MonthlyPlanEntryView {
-  return { id: Math.random().toString(36).slice(2), itemId: "i", itemName: "Item", itemActive: true, categoryId: "c", categoryName: "Categoria", categoryType: "VARIABLE", accountId: "a", accountName: "Conta", ...overrides };
+  return { id: Math.random().toString(36).slice(2), categoryId: "c", categoryName: "Categoria", categoryType: "VARIABLE", accountId: "a", accountName: "Conta", ...overrides };
 }
 
 const incomes: PersonIncome[] = [

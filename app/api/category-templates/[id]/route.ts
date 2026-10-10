@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { categoryTemplateRepository } from "@/shared/repositories/category-template-repository";
 import { monthlyPlanRepository } from "@/shared/repositories/monthly-plan-repository";
-import { checkEntryReferences, parseCategoryTemplateEntries, resolveEntryCategories } from "@/shared/lib/category-template-validation";
+import { checkEntryReferences, parseCategoryTemplateEntries } from "@/shared/lib/category-template-validation";
 import { isUuid } from "@/shared/lib/uuid";
 
 export const runtime = "nodejs";
@@ -35,14 +35,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       return NextResponse.json({ error: "Este template está protegido porque já existe um mês fechado que o utiliza. Cria uma nova versão para fazer alterações futuras." }, { status: 409 });
     }
 
-    const status = await categoryTemplateRepository.findReferenceStatus(parsed.entries.map((entry) => entry.itemId), parsed.entries.map((entry) => entry.accountId));
-    const resolved = resolveEntryCategories(parsed.entries, status.items);
-    if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: 400 });
+    const status = await categoryTemplateRepository.findReferenceStatus(parsed.entries.map((entry) => entry.categoryId), parsed.entries.map((entry) => entry.accountId));
     const existingPairs = await categoryTemplateRepository.findEntryPairs(id);
-    const referenceError = checkEntryReferences(resolved.entries, status, existingPairs);
+    const referenceError = checkEntryReferences(parsed.entries, status, existingPairs);
     if (referenceError) return NextResponse.json({ error: referenceError }, { status: 400 });
 
-    return NextResponse.json(await categoryTemplateRepository.replaceEntries(id, resolved.entries));
+    return NextResponse.json(await categoryTemplateRepository.replaceEntries(id, parsed.entries));
   } catch (error) {
     console.error("Could not update category template.", error);
     return NextResponse.json({ error: "Não foi possível atualizar o template." }, { status: 500 });

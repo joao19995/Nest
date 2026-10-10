@@ -1,9 +1,8 @@
-import type { Account, Category, CategoryTemplate, CategoryTemplateEntry, CategoryTemplateView, Item, MonthlyPlanView, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
+import type { Account, Category, CategoryTemplate, CategoryTemplateEntry, CategoryTemplateView, MonthlyPlanView, Person, PersonIncome } from "@/features/monthly-plan/domain/types";
 import type { Goal, GoalYearReview } from "@/features/goals/domain/types";
 import type { GoalTemplate, GoalTemplateEntry } from "@/features/goals/domain/goal-template";
 import type { MonthFunding, YearFunding } from "@/shared/lib/goal-funding";
 import type { GoalPlanView } from "@/shared/repositories/goal-plan-repository";
-import type { ItemView } from "@/shared/repositories/item-repository";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -56,11 +55,6 @@ export const entitiesClient = {
   createCategory: (name: string, type: Category["type"]) => request<Category>("/api/categories", { method: "POST", body: JSON.stringify({ name, type }) }),
   updateCategory: (id: string, name: string, type: Category["type"], active: boolean) => request<Category>(`/api/categories/${id}`, { method: "PUT", body: JSON.stringify({ name, type, active }) }),
   deactivateCategory: (id: string) => request<Category>(`/api/categories/${id}`, { method: "DELETE" }),
-
-  getItems: () => request<ItemView[]>("/api/items", { cache: "no-store" }),
-  createItem: (categoryId: string, name: string) => request<ItemView>("/api/items", { method: "POST", body: JSON.stringify({ categoryId, name }) }),
-  updateItem: (id: string, input: { name: string; categoryId: string; active: boolean }) => request<ItemView>(`/api/items/${id}`, { method: "PUT", body: JSON.stringify(input) }),
-  deactivateItem: (id: string) => request<ItemView>(`/api/items/${id}`, { method: "DELETE" }),
 
   getGoals: () => request<Goal[]>("/api/goals", { cache: "no-store" }),
   createGoal: (input: { name: string; targetAmount?: number; priority?: Goal["priority"]; timeline?: Goal["timeline"]; realism?: string; notes?: string }) =>
